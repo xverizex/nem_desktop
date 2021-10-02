@@ -4,5 +4,6 @@
 	<metadata_license>CC0-1.0</metadata_license>
 	<project_license>LGPL-2.1-or-later</project_license>
 	<description>
+	  Text each other with end-to-end encryption.
 	</description>
 </component>
