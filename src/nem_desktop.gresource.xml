@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <gresource prefix="/github/xverizex/nem-desktop">
+  <gresource prefix="/github/xverizex/nem_desktop">
     <file alias="handshake.svg">../data/icons/hicolor/symbolic/handshake-symbolic.svg</file>
     <file alias="left-pane.svg">../data/icons/hicolor/symbolic/view-left-pane-symbolic.svg</file>
     <file alias="status_online.svg">../data/icons/hicolor/symbolic/status_online.svg</file>

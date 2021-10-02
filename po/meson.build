@@ -1,1 +1,1 @@
-i18n.gettext('nem-desktop', preset: 'glib')
+i18n.gettext('nem_desktop', preset: 'glib')

@@ -22,7 +22,7 @@ nem_desktop_sources += gnome.compile_resources('nem_desktop-resources',
   c_name: 'nem_desktop'
 )
 
-executable('nem-desktop', nem_desktop_sources,
+executable('nem_desktop', nem_desktop_sources,
   dependencies: nem_desktop_deps,
   install: true,
 )
