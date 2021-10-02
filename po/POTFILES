@@ -1,0 +1,7 @@
+data/github.xverizex.nem-desktop.desktop.in
+data/github.xverizex.nem-desktop.appdata.xml.in
+data/github.xverizex.nem-desktop.gschema.xml
+src/nem_desktop-window.ui
+src/main.c
+src/nem_desktop-window.c
+
