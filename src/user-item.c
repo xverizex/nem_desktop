@@ -298,10 +298,10 @@ static void user_item_init (UserItem *self) {
 
 	gtk_frame_set_child (GTK_FRAME (self), self->box);
 
-	self->iconw = gtk_image_new_from_resource ("/github/xverizex/nem_desktop/human_default.svg");
+	self->iconw = gtk_image_new_from_resource ("/io/github/xverizex/nem_desktop/human_default.svg");
 	gtk_widget_set_name (self->iconw, "item");
 
-	self->statusw = gtk_image_new_from_resource ("/github/xverizex/nem_desktop/status_offline.svg");
+	self->statusw = gtk_image_new_from_resource ("/io/github/xverizex/nem_desktop/status_offline.svg");
 	g_object_set (self->statusw, "halign", GTK_ALIGN_END, "hexpand", TRUE, NULL);
 	gtk_widget_set_name (self->statusw, "item");
 
@@ -336,7 +336,7 @@ static void user_item_set_property (GObject *object,
 			if (self->status) {
 				if (self->statusw) {
 					gtk_box_remove (GTK_BOX (self->box), self->statusw);
-					self->statusw = gtk_image_new_from_resource ("/github/xverizex/nem_desktop/status_online.svg");
+					self->statusw = gtk_image_new_from_resource ("/io/github/xverizex/nem_desktop/status_online.svg");
 					g_object_set (self->statusw, "halign", GTK_ALIGN_END, "hexpand", TRUE, NULL);
 					gtk_widget_set_name (self->statusw, "item");
 				}
@@ -344,7 +344,7 @@ static void user_item_set_property (GObject *object,
 			} else {
 				if (self->statusw) {
 					gtk_box_remove (GTK_BOX (self->box), self->statusw);
-					self->statusw = gtk_image_new_from_resource ("/github/xverizex/nem_desktop/status_offline.svg");
+					self->statusw = gtk_image_new_from_resource ("/io/github/xverizex/nem_desktop/status_offline.svg");
 					g_object_set (self->statusw, "halign", GTK_ALIGN_END, "hexpand", TRUE, NULL);
 					gtk_widget_set_name (self->statusw, "item");
 				}

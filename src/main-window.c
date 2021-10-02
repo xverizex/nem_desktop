@@ -879,7 +879,7 @@ void main_window_play_new_message (MainWindow *self)
 
 static void main_window_init (MainWindow *self)
 {
-  GFile *ff = g_file_new_for_uri ("resource:///github/xverizex/nem_desktop/in_message.mp3");
+  GFile *ff = g_file_new_for_uri ("resource:///io/github/xverizex/nem_desktop/in_message.mp3");
 
 	GError *error = NULL;
   char ppath[512];
@@ -984,7 +984,7 @@ static void main_window_init (MainWindow *self)
 
 	self->left_pane_button = gtk_toggle_button_new ();
 	self->image_header_left_pane = g_object_new (GTK_TYPE_IMAGE,
-                                               "resource", "/github/xverizex/nem_desktop/left-pane.svg",
+                                               "resource", "/io/github/xverizex/nem_desktop/left-pane.svg",
                                                NULL);
 
 	gtk_button_set_child (GTK_BUTTON (self->left_pane_button), self->image_header_left_pane);
@@ -994,7 +994,7 @@ static void main_window_init (MainWindow *self)
 
 	self->handshake_button = gtk_toggle_button_new ();
   self->image_handshake = g_object_new (GTK_TYPE_IMAGE,
-                                        "resource", "/github/xverizex/nem_desktop/handshake.svg",
+                                        "resource", "/io/github/xverizex/nem_desktop/handshake.svg",
                                         "icon-size", GTK_ICON_SIZE_NORMAL,
                                         NULL);
 

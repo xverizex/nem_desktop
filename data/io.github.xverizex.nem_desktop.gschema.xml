@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="nem_desktop">
-	<schema id="github.xverizex.nem_desktop" path="/github/xverizex/nem_desktop/">
+	<schema id="io.github.xverizex.nem_desktop" path="/io/github/xverizex/nem_desktop/">
 	</schema>
 </schemalist>

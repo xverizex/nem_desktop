@@ -1,4 +1,4 @@
-application_id = 'org.xverizex.nem_desktop'
+application_id = 'io.github.xverizex.nem_desktop'
 
 scalable_dir = join_paths('hicolor', 'scalable', 'apps')
 install_data(

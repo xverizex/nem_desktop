@@ -147,7 +147,7 @@ int main (int argc, char **argv)
 {
   get_root_app ();
 	gst_init (NULL, NULL);
-	GtkApplication *app = gtk_application_new ("github.xverizex.nem_desktop", G_APPLICATION_FLAGS_NONE);
+	GtkApplication *app = gtk_application_new ("io.github.xverizex.nem_desktop", G_APPLICATION_FLAGS_NONE);
 	g_application_register (G_APPLICATION (app), NULL, NULL);
 	g_signal_connect (app, "activate", G_CALLBACK (app_activate_cb), NULL);
 	return g_application_run (G_APPLICATION (app), argc, argv);
