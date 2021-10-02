@@ -15,6 +15,13 @@
       <image>https://github.com/xverizex/nem_desktop/data/nem-desktop.png</image>
     </screenshot>
   <releases>
+    <release date="2021-10-03" version="0.1.8">
+      <description>
+        <ul>
+          <li>change license in source code.</li>
+        </ul>
+      </description>
+    </release>
     <release date="2021-10-03" version="0.1.6">
       <description>
         <ul>
