@@ -16,6 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #include "main-window.h"
 #include "user-item.h"
 #include <json-glib/json-glib.h>
