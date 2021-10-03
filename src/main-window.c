@@ -935,6 +935,8 @@ static void main_window_init (MainWindow *self)
   snprintf (ppath, 512,"filesrc location=%s/in_message.mp3 "
 			"! mpegaudioparse ! mpg123audiodec ! audioconvert ! audioresample ! autoaudiosink",
             root_sounds);
+
+
 	self->new_message = gst_parse_launch ( ppath, &error);
 	if (error) {
 		g_print ("error parse gst file in_message: %s\n", error->message);

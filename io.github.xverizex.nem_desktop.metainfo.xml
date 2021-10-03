@@ -17,6 +17,14 @@
     <screenshot type="default">
       <image>https://github.com/xverizex/nem_desktop/data/nem-desktop.png</image>
     </screenshot>
+      <releases>
+    <release date="2021-10-03" version="0.1.14">
+      <description>
+        <ul>
+          <li>fix bug filesystem.</li>
+        </ul>
+      </description>
+    </release>
   <releases>
     <release date="2021-10-03" version="0.1.12">
       <description>
