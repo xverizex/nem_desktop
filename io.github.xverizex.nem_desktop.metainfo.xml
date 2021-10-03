@@ -15,18 +15,45 @@
   </description>
   <screenshots>
     <screenshot type="default">
-      <image>https://github.com/xverizex/nem_desktop/raw/main/data/nem-desktop.png</image>
+      <image>https://github.com/xverizex/nem_desktop/data/nem-desktop.png</image>
     </screenshot>
-</screenshots>
   <releases>
+    <release date="2021-10-03" version="0.1.12">
+      <description>
+        <ul>
+          <li>change a little style design.</li>
+        </ul>
+      </description>
+    </release>
     <release date="2021-10-03" version="0.1.10">
       <description>
         <ul>
-          <li><p>fix bug of a storage keys.</p></li>
+          <li>fix bug of a storage keys.</li>
+        </ul>
+      </description>
+    </release>
+    <release date="2021-10-03" version="0.1.8">
+      <description>
+        <ul>
+          <li>change license in source code.</li>
+        </ul>
+      </description>
+    </release>
+    <release date="2021-10-03" version="0.1.6">
+      <description>
+        <ul>
+          <li>Fix small bugs.</li>
+        </ul>
+      </description>
+    </release>
+    <release date="2021-10-01" version="0.1.4">
+      <description>
+        <ul>
+          <li>Init</li>
         </ul>
       </description>
     </release>
   </releases>
+  <content_rating type="oars-1.1" />
   <update_contact>naidv88@gmail.com</update_contact>
-  <url type="homepage">https://github.com/xverizex/nem_desktop</url>
 </component>

@@ -18,13 +18,24 @@
  */
 
 #include "message-item.h"
+#include "main-window.h"
+
+struct points {
+  int x;
+  int y;
+  int width;
+  int height;
+};
 
 struct _MessageItem {
 	GtkDrawingArea parent_instance;
 
 	char *text;
+  struct points *p;
 	int max_width;
   int id;
+  int pressed;
+  MainWindow *main_window;
 };
 
 G_DEFINE_TYPE (MessageItem, message_item, GTK_TYPE_DRAWING_AREA)
@@ -33,6 +44,7 @@ typedef enum {
 	PROP_TEXT = 1,
 	PROP_MAX_WIDTH,
   PROP_ID,
+  PROP_MAIN_WINDOW,
 	N_PROPERTIES
 } MessageItemProperties;
 
@@ -59,18 +71,18 @@ static void draw_function (GtkDrawingArea *area,
 	int total_w = self->max_width;
 	int total_h = 0;
 	cairo_set_source_rgb (cr, 0.0, 0.0, 0.0);
-  cairo_set_font_size (cr, 14);
+  cairo_set_font_size (cr, 12);
 	cairo_text_extents_t sz;
 	cairo_text_extents (cr, buf_time, &sz);
-	total_h = sz.height + OFFSET;
+	total_h = sz.height + OFFSET + 10;
   int x = self->max_width / 2 - sz.width / 2 - OFFSET;
   cairo_save (cr);
   cairo_set_source_rgb (cr, 0.4, 0.4, 0.4);
-  cairo_move_to (cr, x - 10, 0);
-  cairo_line_to (cr, x, sz.height + 8);
-  cairo_line_to (cr, x + sz.width, sz.height + 8);
-  cairo_line_to (cr, x + sz.width + 10, 0);
-  cairo_line_to (cr, x - 10, 0);
+  cairo_move_to (cr, x - 40, 0);
+  cairo_line_to (cr, x - 30, sz.height + 8);
+  cairo_line_to (cr, x + sz.width + 30, sz.height + 8);
+  cairo_line_to (cr, x + sz.width + 40, 0);
+  cairo_line_to (cr, x - 40, 0);
   cairo_move_to (cr, x, total_h);
   cairo_fill (cr);
   cairo_restore (cr);
@@ -80,65 +92,41 @@ static void draw_function (GtkDrawingArea *area,
 	cairo_show_text (cr, buf_time);
 
   cairo_set_source_rgb (cr, 0.0, 0.0, 0.0);
-	cairo_set_font_size (cr, 18);
+	cairo_set_font_size (cr, 16);
  	cairo_text_extents (cr, self->text, &sz);
 
+  int max_count = g_utf8_strlen (self->text, -1);
 
-	if ((sz.width + OFFSET * 2) > self->max_width) {
-		int index = 0;
-		int len = 0;
-		const char *loc = NULL;
-		char *s = strdup (self->text);
-		char *st = s;
-		int llen = strlen (self->text);
-		int total_index = 0;
-		int te = 0;
-		while (1) {
-			if (total_index >= llen) break;
-			s[index] = self->text[te];
-			index++;
-			te++;
-			total_index++;
-			s[index] = 0;
-			gboolean valid = g_utf8_validate (s, -1, &loc);
-			if (valid) {
-				cairo_text_extents (cr, s, &sz);
-				if ((sz.width + OFFSET * 2) < self->max_width) {
-					continue;
-				}
-				index--;
-				te--;
-				s[index] = 0;
-				while (!g_utf8_validate (s, -1, &loc)) {
-					index--;
-					te--;
-					total_index--;
-					s[index] = 0;
-				}
-				cairo_move_to (cr, OFFSET, total_h);
-				total_h += sz.height + 10;
-				cairo_show_text (cr, s);
-				s += index;
-				index = 0;
-			}
-		}
-		cairo_move_to (cr, OFFSET, total_h);
-		total_h += OFFSET;
-		gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (self), total_w);
-		gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (self), total_h);
-		cairo_show_text (cr, s);
-		free (st);
-		return;
-	}
+  x = OFFSET;
 
-	gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (self), sz.width + OFFSET * 2);
-	gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (self), total_h + sz.height + OFFSET * 2);
-	cairo_move_to (cr, OFFSET, total_h + sz.height + OFFSET);
-	cairo_show_text (cr, self->text);
+  char *s = self->text;
+  if (max_count <= 0) return;
+  for (int i = 0; i < max_count; i++) {
+    int count = 1;
+    char buf[16];
+    while (!g_utf8_validate (s, count, NULL)) count++;
+    strncpy (buf, s, count);
+    buf[count] = 0;
+    cairo_text_extents (cr, buf, &sz);
+    if ((x + sz.x_advance) >= self->max_width - OFFSET) {
+      total_h += 16 + 10;
+      x = OFFSET;
+    }
+    cairo_move_to (cr, x, total_h);
+    self->p[i].x = x;
+    self->p[i].y = total_h;
+    self->p[i].width = sz.x_advance;
+    self->p[i].height = sz.y_advance;
+    x += sz.x_advance;
+    cairo_show_text (cr, buf);
+    s += count;
+  }
+  total_h += 16;
+
+	gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (self), self->max_width);
+	gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (self), total_h + OFFSET);
 }
 
-static void assembly_width_and_height (MessageItem *self) {
-}
 
 static void message_item_set_property (GObject *object,
 		guint property_id,
@@ -150,7 +138,8 @@ static void message_item_set_property (GObject *object,
 		case PROP_TEXT:
 			if (self->text) g_free (self->text);
 			self->text = g_value_dup_string (value);
-			assembly_width_and_height (self);
+      if (self->text == NULL) break;
+      self->p = calloc (g_utf8_strlen (self->text, -1), sizeof (struct points));
 			break;
   case PROP_ID:
     self->id = g_value_get_int (value);
@@ -159,6 +148,11 @@ static void message_item_set_property (GObject *object,
 			self->max_width = g_value_get_int (value);
 			break;
 		default:
+  case PROP_MAIN_WINDOW:
+      {
+        self->main_window = g_value_get_object (value);
+      }
+      break;
 			G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
 			break;
 	}
@@ -190,16 +184,53 @@ static void message_item_class_init (MessageItemClass *klass) {
 			"id of message",
 			"set id of message",
 			0,
-			-1,
-			-1,
+			9999,
+			0,
+			G_PARAM_WRITABLE
+			);
+  obj_properties[PROP_MAIN_WINDOW] = g_param_spec_object (
+			"main_window",
+			"main_window",
+      "main_window",
+			G_TYPE_OBJECT,
 			G_PARAM_WRITABLE
 			);
 
+
 	g_object_class_install_properties (object_class, N_PROPERTIES, obj_properties);
+}
+
+
+
+static void event_motion_cb (GtkEventControllerMotion *motion,
+                             double                    x,
+                             double                    y,
+                             gpointer                  user_data)
+{
+
+}
+
+static gesture_pressed_cb (GtkGestureClick *gesture,
+                           int              n_press,
+                           double           x,
+                           double           y,
+                           gpointer         user_data)
+{
+
 }
 
 static void message_item_init (MessageItem *self) {
 	gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (self), 10);
 	gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (self), 10);
 	gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (self), draw_function, NULL, NULL);
+
+  GtkGesture *gesture_click = gtk_gesture_click_new ();
+  g_signal_connect (gesture_click, "pressed", G_CALLBACK (gesture_pressed_cb), self);
+
+  GtkEventController *event_motion = gtk_event_controller_motion_new ();
+  g_signal_connect (event_motion, "motion", G_CALLBACK (event_motion_cb), self);
+
+
+  gtk_widget_add_controller (GTK_WIDGET (self), event_motion);
+  gtk_widget_add_controller (GTK_WIDGET (self), gesture_click);
 }

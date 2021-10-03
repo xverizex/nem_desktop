@@ -701,6 +701,11 @@ static void main_window_class_init (MainWindowClass *klass) {
 static int switcher_dec;
 static int switcher_inc;
 
+GtkWidget *main_window_get_paned (MainWindow *self)
+{
+  return self->main_pane;
+}
+
 static gboolean handler_left_pane_dec_cb (gpointer user_data)
 {
 	if (switcher_inc) {

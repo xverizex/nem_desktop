@@ -140,6 +140,7 @@ void user_item_add_message (UserItem *self, const char *msg, int me, const char 
 	g_object_set (text_view,
 			"text", msg,
 			"max_width", 400,
+      "main_window", self->main_window,
 			NULL);
 
 	gtk_widget_set_name (frame, "msg");
