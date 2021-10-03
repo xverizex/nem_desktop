@@ -24,6 +24,7 @@ struct _MessageItem {
 
 	char *text;
 	int max_width;
+  int id;
 };
 
 G_DEFINE_TYPE (MessageItem, message_item, GTK_TYPE_DRAWING_AREA)
@@ -31,6 +32,7 @@ G_DEFINE_TYPE (MessageItem, message_item, GTK_TYPE_DRAWING_AREA)
 typedef enum {
 	PROP_TEXT = 1,
 	PROP_MAX_WIDTH,
+  PROP_ID,
 	N_PROPERTIES
 } MessageItemProperties;
 
@@ -150,6 +152,9 @@ static void message_item_set_property (GObject *object,
 			self->text = g_value_dup_string (value);
 			assembly_width_and_height (self);
 			break;
+  case PROP_ID:
+    self->id = g_value_get_int (value);
+    break;
 		case PROP_MAX_WIDTH:
 			self->max_width = g_value_get_int (value);
 			break;
@@ -178,6 +183,15 @@ static void message_item_class_init (MessageItemClass *klass) {
 			100,
 			1080,
 			400,
+			G_PARAM_WRITABLE
+			);
+  obj_properties[PROP_ID] = g_param_spec_int (
+			"id",
+			"id of message",
+			"set id of message",
+			0,
+			-1,
+			-1,
 			G_PARAM_WRITABLE
 			);
 

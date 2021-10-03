@@ -1,5 +1,5 @@
 project('nem_desktop', 'c',
-          version: '0.1.8',
+          version: '0.1.10',
     meson_version: '>= 0.50.0',
   default_options: [ 'warning_level=2',
                      'c_std=gnu11',

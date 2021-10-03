@@ -39,6 +39,7 @@ struct _UserItem {
 	int blink;
 	int blink_handshake;
 
+
 	GdkDisplay *display;
 	GtkCssProvider *provider;
 
@@ -235,7 +236,9 @@ static void entry_input_text_cb (GtkEntry *entry, gpointer user_data) {
 	char path[256];
 	snprintf (path, 256, "%s/%s/crypto.pem", root_app, name);
 
+
 	if (access (path, F_OK)) {
+
 		g_notification_set_body (G_NOTIFICATION (self->notification),
 				"Not found public key from user."
 				);

@@ -130,6 +130,12 @@ static void get_root_app ()
 		mkdir (root, S_IRWXU | S_IRWXG | S_IRWXO);
 	}
 
+  snprintf (root_keys, 256, "%s/keys", root);
+	if (access (root_keys, F_OK) == -1) {
+		mkdir (root_keys, S_IRWXU | S_IRWXG | S_IRWXO);
+	}
+
+  root_app = strdup (root_keys);
   snprintf (root, 256, "%s/.nem/sounds", home);
 	if (access (root, F_OK) == -1) {
 		mkdir (root, S_IRWXU | S_IRWXG | S_IRWXO);
@@ -137,11 +143,7 @@ static void get_root_app ()
 
   root_sounds = strdup (root);
 
-  snprintf (root_keys, 256, "%s/keys", root);
-	if (access (root_keys, F_OK) == -1) {
-		mkdir (root_keys, S_IRWXU | S_IRWXG | S_IRWXO);
-	}
-  root_app = strdup (root_keys);
+
 }
 
 int main (int argc, char **argv)

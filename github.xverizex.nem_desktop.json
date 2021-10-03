@@ -31,8 +31,7 @@
             "sources" : [
                 {
                     "type" : "git",
-                    "url" : "https://github.com/xverizex/nem_desktop",
-                    "tag" : ""
+                    "url" : "https://github.com/xverizex/nem_desktop"
                 }
             ]
         }
