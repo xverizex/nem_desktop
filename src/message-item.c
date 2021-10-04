@@ -25,6 +25,7 @@ struct points {
   int y;
   int width;
   int height;
+  double red, green, blue;
 };
 
 struct _MessageItem {
@@ -35,6 +36,11 @@ struct _MessageItem {
 	int max_width;
   int id;
   int pressed;
+  double point_x;
+  double point_y;
+  int length_text;
+  int index_end;
+  int index_start;
   MainWindow *main_window;
 };
 
@@ -116,8 +122,9 @@ static void draw_function (GtkDrawingArea *area,
     self->p[i].x = x;
     self->p[i].y = total_h;
     self->p[i].width = sz.x_advance;
-    self->p[i].height = sz.y_advance;
+    self->p[i].height = sz.height;
     x += sz.x_advance;
+    cairo_set_source_rgb (cr, self->p[i].red, self->p[i].green, self->p[i].blue);
     cairo_show_text (cr, buf);
     s += count;
   }
@@ -139,7 +146,8 @@ static void message_item_set_property (GObject *object,
 			if (self->text) g_free (self->text);
 			self->text = g_value_dup_string (value);
       if (self->text == NULL) break;
-      self->p = calloc (g_utf8_strlen (self->text, -1), sizeof (struct points));
+      self->length_text = g_utf8_strlen (self->text, -1);
+      self->p = calloc (self->length_text, sizeof (struct points));
 			break;
   case PROP_ID:
     self->id = g_value_get_int (value);
@@ -207,16 +215,105 @@ static void event_motion_cb (GtkEventControllerMotion *motion,
                              double                    y,
                              gpointer                  user_data)
 {
+  MessageItem *self = MESSAGE_ITEM (user_data);
+  if (!self->pressed) return;
 
+  int xx = x;
+  int yy = y;
+
+  int i = 0;
+  int direction = 0;
+  if (x < self->point_x || x > self->point_x) {
+    if (y <= self->point_y) {
+      i = self->length_text - 1;
+      direction = 1;
+    } else {
+      i = 0;
+      direction = 0;
+    }
+  } else {
+    i = -1;
+  }
+
+  while (1)
+    {
+      if (i == -1) break;
+        if ((xx > self->p[i].x && xx < (self->p[i].x + self->p[i].width)))
+            {
+              do {
+              if (direction) {
+                if ((yy > self->p[i].y - OFFSET)  && (yy < (self->p[i].y + self->p[i].height))) self->index_start = i;
+                if (self->point_y > self->p[i].y) {
+                  if (self->index_end >= 0) break;
+                  self->index_end = i;
+                }
+              } else {
+                if (yy >= (self->p[i].y)) {
+                  if (self->index_start < 0) self->index_start = i;
+                }
+                  if ((yy > self->p[i].y)) self->index_end = i;
+                  //self->index_end = i;
+
+              }
+              } while (0);
+
+
+            }
+
+      if (direction) {
+        i--;
+        if (i >= 0) continue;
+        else break;
+      }
+      else {
+        i++;
+        if (i < self->length_text) continue;
+        else break;
+      }
+    }
+
+
+
+  if (self->index_start == -1 || self->index_end == -1) return;
+
+  for (int i = 0; i < self->length_text; i++) {
+    if (i >= self->index_start && i <= self->index_end) {
+      self->p[i].red = 1.0;
+      self->p[i].green = 0.0;
+      self->p[i].blue = 0.0;
+    } else {
+      self->p[i].red = 0.0;
+      self->p[i].green = 0.0;
+      self->p[i].blue = 0.0;
+    }
+  }
+
+  gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
-static gesture_pressed_cb (GtkGestureClick *gesture,
+static void gesture_pressed_cb (GtkGestureClick *gesture,
                            int              n_press,
                            double           x,
                            double           y,
                            gpointer         user_data)
 {
+  MessageItem *self = MESSAGE_ITEM (user_data);
+  self->pressed = 1;
+  self->point_y = y;
+  self->point_x = x;
+  self->index_end = -1;
+  self->index_start = -1;
+}
 
+
+static void gesture_released_cb (GtkGestureClick *gesture,
+                           int              n_press,
+                           double           x,
+                           double           y,
+                           gpointer         user_data)
+{
+  MessageItem *self = MESSAGE_ITEM (user_data);
+  self->pressed = 0;
 }
 
 static void message_item_init (MessageItem *self) {
@@ -226,6 +323,7 @@ static void message_item_init (MessageItem *self) {
 
   GtkGesture *gesture_click = gtk_gesture_click_new ();
   g_signal_connect (gesture_click, "pressed", G_CALLBACK (gesture_pressed_cb), self);
+  g_signal_connect (gesture_click, "released", G_CALLBACK (gesture_released_cb), self);
 
   GtkEventController *event_motion = gtk_event_controller_motion_new ();
   g_signal_connect (event_motion, "motion", G_CALLBACK (event_motion_cb), self);

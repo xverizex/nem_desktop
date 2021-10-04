@@ -25,7 +25,7 @@
      showgrid="false"
      inkscape:zoom="3.2016679"
      inkscape:cx="23.893796"
-     inkscape:cy="86.829742"
+     inkscape:cy="86.829743"
      inkscape:window-width="1920"
      inkscape:window-height="1011"
      inkscape:window-x="0"
@@ -49,12 +49,11 @@
        height="128"
        x="0"
        y="0"
-       ry="0" />
+       ry="14.153999" />
     <path
-       id="rect11933"
-       style="opacity:0.45566;stroke-width:4.22915"
-       d="M 10.327882,63.999992 H 117.77915 l 54.93719,87.733768 H 65.265068 Z"
-       sodipodi:nodetypes="ccccc" />
+       id="rect1079-3"
+       style="fill:#000000;fill-opacity:1;stroke-width:2.36891;opacity:0.21414528"
+       d="M 10.328125 64 L 50.404297 128 L 113.8457 128 C 121.68702 128 128 121.68702 128 113.8457 L 128 80.322266 L 117.7793 64 L 10.328125 64 z " />
     <rect
        style="fill:#ececec;fill-opacity:1;stroke:none;stroke-width:2;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        id="rect8207"
