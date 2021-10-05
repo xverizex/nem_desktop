@@ -58,6 +58,7 @@ struct _UserItem {
 	GtkApplication *app;
 	gboolean handshaked;
 	GtkWidget *main_window;
+  GtkWidget *popover;
 };
 
 G_DEFINE_TYPE (UserItem, user_item, GTK_TYPE_FRAME)
@@ -75,6 +76,7 @@ typedef enum {
 	PROP_NOTIFICATION,
 	PROP_APP,
 	PROP_MAIN_WINDOW,
+  PROP_POPOVER,
 	N_PROPERTIES
 } UserItemProperty;
 
@@ -123,6 +125,8 @@ static const char *styles =
 "frame#msg { background-color: #b0bfd1; margin-top: 8px; margin-bottom: 8px; margin-left: 16px; margin-right: 16px; }"
 ;
 
+
+
 void user_item_set_chat (UserItem *self) {
 	GtkWidget *child = gtk_frame_get_child (GTK_FRAME (self->frame_chat));
 	if (child) g_object_ref (child);
@@ -141,6 +145,7 @@ void user_item_add_message (UserItem *self, const char *msg, int me, const char 
 			"text", msg,
 			"max_width", 400,
       "main_window", self->main_window,
+      "app", self->app,
 			NULL);
 
 	gtk_widget_set_name (frame, "msg");
@@ -329,6 +334,9 @@ static void user_item_set_property (GObject *object,
 	UserItem *self = USER_ITEM (object);
 
 	switch ((UserItemProperty) property_id) {
+  case PROP_POPOVER:
+    self->popover = g_value_get_object (value);
+    break;
 		case PROP_ICON:
 			self->icon = g_value_dup_string (value);
 			break;
@@ -529,6 +537,14 @@ static void user_item_class_init (UserItemClass *klass) {
 			"main_window",
 			"main window",
 			"main window",
+			G_TYPE_OBJECT,
+			G_PARAM_WRITABLE
+			);
+
+  obj_properties[PROP_POPOVER] = g_param_spec_object (
+			"popover",
+			"popover",
+			"popover",
 			G_TYPE_OBJECT,
 			G_PARAM_WRITABLE
 			);

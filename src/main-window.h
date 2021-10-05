@@ -11,5 +11,6 @@ void main_window_get_list_users (MainWindow *w);
 void main_window_feed (MainWindow *w);
 void main_window_play_new_message (MainWindow *self);
 GtkWidget *main_window_get_paned (MainWindow *self);
+GtkWidget *main_window_get_list_box (MainWindow *self);
 
 G_END_DECLS

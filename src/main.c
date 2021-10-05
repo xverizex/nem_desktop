@@ -26,10 +26,22 @@
 #include <unistd.h>
 #include "main-window.h"
 #include "register-window.h"
+#include "message-item.h"
 
 static GtkWidget *register_window;
+static GtkWidget *main_window;
+static GtkWidget *popover;
+MessageItem *message_item;
 char *root_app;
 char *root_sounds;
+
+static void copy_text_cb (GSimpleAction *action,
+                          GVariant      *parameter,
+                          gpointer       user_data)
+{
+
+  message_item_copy (message_item);
+}
 
 static gboolean windows_close_request_cb (GtkWindow *widget,
 		gpointer user_data)
@@ -74,7 +86,8 @@ static GActionGroup *create_action_group (GtkApplication *self) {
 	const GActionEntry entries[] = {
 		{ "register", activate_register_cb, NULL, NULL, NULL },
 		{ "login", activate_login_cb, NULL, NULL, NULL },
-		{ "quit", activate_quit_cb, NULL, NULL, NULL }
+		{ "quit", activate_quit_cb, NULL, NULL, NULL },
+      {"copy", copy_text_cb, NULL, NULL, NULL}
 	};
 
 	g_action_map_add_action_entries (G_ACTION_MAP (self), entries, G_N_ELEMENTS (entries), self);
@@ -88,13 +101,16 @@ static void app_activate_cb (GtkApplication *app, gpointer user_data)
 			"default-height", 450,
 			NULL);
 
-
+  GMenuModel *menu_for_text = g_menu_new ();
+  g_menu_append (menu_for_text, "COPY", "app.copy");
+  popover = gtk_popover_menu_new_from_model (menu_for_text);
 	g_signal_connect (register_window, "close-request", G_CALLBACK (windows_close_request_cb), NULL);
 
-	GtkWidget *main_window = g_object_new (MAIN_TYPE_WINDOW,
+	main_window = g_object_new (MAIN_TYPE_WINDOW,
 			"default-width", 1024,
 			"default-height", 600,
 			"app", app,
+      "popover", popover,
 			NULL);
 
 	g_object_set (register_window,

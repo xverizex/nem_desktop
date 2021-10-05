@@ -20,7 +20,14 @@
     </screenshot>
 </screenshots>
   <releases>
-    <release date="2021-10-03" version="0.1.26">
+    <release date="2021-10-03" version="0.1.30">
+      <description>
+        <ul>
+          <li>text selection and it copy.</li>
+        </ul>
+      </description>
+    </release>
+    <release date="2021-10-03" version="0.1.28">
       <description>
         <ul>
           <li><p>fix appdata.</p></li>
