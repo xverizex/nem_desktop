@@ -46,38 +46,12 @@ struct _MessageItem {
   char buf_time[128];
   GtkWidget *popover;
   MainWindow *main_window;
+  GMenu *menu;
 };
 
-static void message_item_interface_init (GActionMapInterface *map);
 
-G_DEFINE_TYPE_WITH_CODE (MessageItem, message_item, GTK_TYPE_DRAWING_AREA,
-                         G_IMPLEMENT_INTERFACE (G_TYPE_ACTION_MAP,
-                                                message_item_interface_init))
+G_DEFINE_TYPE (MessageItem, message_item, GTK_TYPE_DRAWING_AREA)
 
-static GAction *lookup_action (GActionMap *action_map,
-                               const char *action_name)
-{
-  return g_action_map_lookup_action (action_map, action_name);
-}
-
-static void add_action (GActionMap *action_map,
-                        GAction    *action)
-{
-  g_action_map_add_action (action_map, action);
-}
-
-static void remove_action (GActionMap  *action_map,
-                           const gchar *action_name)
-{
-  g_action_map_remove_action (action_map, action_name);
-}
-
-static void message_item_interface_init (GActionMapInterface *map)
-{
-  map->lookup_action = lookup_action;
-  map->add_action = add_action;
-  map->remove_action = remove_action;
-}
 
 typedef enum {
 	PROP_TEXT = 1,
@@ -111,11 +85,11 @@ static void draw_function (GtkDrawingArea *area,
   int x = self->max_width / 2 - sz.width / 2 - OFFSET;
   cairo_save (cr);
   cairo_set_source_rgb (cr, 0.4, 0.4, 0.4);
-  cairo_move_to (cr, x - 40, 0);
-  cairo_line_to (cr, x - 30, sz.height + 8);
-  cairo_line_to (cr, x + sz.width + 30, sz.height + 8);
-  cairo_line_to (cr, x + sz.width + 40, 0);
-  cairo_line_to (cr, x - 40, 0);
+  cairo_move_to (cr, x - 10, 0);
+  cairo_line_to (cr, x, sz.height + 8);
+  cairo_line_to (cr, x + sz.width, sz.height + 8);
+  cairo_line_to (cr, x + sz.width + 10, 0);
+  cairo_line_to (cr, x - 10, 0);
   cairo_move_to (cr, x, total_h);
   cairo_fill (cr);
   cairo_restore (cr);
@@ -259,16 +233,13 @@ static void event_motion_cb (GtkEventControllerMotion *motion,
 
   int i = 0;
   int direction = 0;
-  if (x <= self->point_x || x >= self->point_x) {
-    if (y <= self->point_y) {
-      i = self->length_text - 1;
-      direction = 1;
-    } else {
-      i = 0;
-      direction = 0;
-    }
+
+  if (y <= self->point_y) {
+    i = self->length_text - 1;
+    direction = 1;
   } else {
-    i = -1;
+    i = 0;
+    direction = 0;
   }
 
   while (1)
@@ -278,8 +249,8 @@ static void event_motion_cb (GtkEventControllerMotion *motion,
             {
               do {
               if (direction) {
-                if ((yy < self->p[i].y)) self->index_start = i;
-                if (self->point_y > self->p[i].y) {
+                if ((yy <= self->p[i].y)) self->index_start = i;
+                if (self->point_y >= self->p[i].y) {
                   if (self->index_end >= 0) break;
                   self->index_end = i;
                 }
@@ -311,6 +282,7 @@ static void event_motion_cb (GtkEventControllerMotion *motion,
 
   if (self->index_start == -1 || self->index_end == -1) return;
 
+  self->selected = 0;
   for (int i = 0; i < self->length_text; i++) {
     if (i >= self->index_start && i <= self->index_end) {
       self->p[i].red = 1.0;
@@ -321,7 +293,6 @@ static void event_motion_cb (GtkEventControllerMotion *motion,
       self->p[i].red = 0.0;
       self->p[i].green = 0.0;
       self->p[i].blue = 0.0;
-      self->selected = 0;
     }
   }
 
@@ -351,7 +322,8 @@ static void gesture_released_cb (GtkGestureClick *gesture,
 {
   MessageItem *self = MESSAGE_ITEM (user_data);
   self->pressed = 0;
-  //gtk_popover_popup (self->popover);
+
+
 }
 
 static void copy_text_cb (GSimpleAction *action,
@@ -377,15 +349,5 @@ static void message_item_init (MessageItem *self) {
   gtk_widget_add_controller (GTK_WIDGET (self), event_motion);
   gtk_widget_add_controller (GTK_WIDGET (self), gesture_click);
 
-  static const GActionEntry actions[] = {
-      {"copy", copy_text_cb, NULL, NULL, NULL}
-  };
-  g_action_map_add_action_entries (G_ACTION_MAP (self), actions, 1, self);
 
-#if 0
-  GMenu *menu = g_menu_new ();
-  g_menu_append (menu, "COPY", "app.copy");
-  self->popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (menu));
-  gtk_popover_set_default_widget (GTK_POPOVER (self->popover), GTK_WIDGET (self));
-#endif
 }

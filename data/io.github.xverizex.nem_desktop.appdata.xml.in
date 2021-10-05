@@ -12,6 +12,7 @@
   </content_rating>
   <description>
     <p>Connect to the server on IP and port. Exchange with a friend a key and text each other.</p>
+    <p>server: <a href="https://github.com/xverizex/nem-server">https://github.com/xverizex/nem-server</a></p>
   </description>
   <screenshots>
     <screenshot type="default">
@@ -19,6 +20,13 @@
     </screenshot>
 </screenshots>
   <releases>
+    <release date="2021-10-03" version="0.1.24">
+      <description>
+        <ul>
+          <li><p>fix date when highlight text.</p></li>
+        </ul>
+      </description>
+    </release>
     <release date="2021-10-03" version="0.1.10">
       <description>
         <ul>
