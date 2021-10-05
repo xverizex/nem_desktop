@@ -20,6 +20,13 @@
     </screenshot>
 </screenshots>
   <releases>
+    <release date="2021-10-03" version="0.1.32">
+      <description>
+        <ul>
+          <li></li>
+        </ul>
+      </description>
+    </release>
     <release date="2021-10-03" version="0.1.30">
       <description>
         <ul>
@@ -51,4 +58,6 @@
   </releases>
   <update_contact>naidv88@gmail.com</update_contact>
   <url type="homepage">https://github.com/xverizex/nem_desktop</url>
+  <url type="donation">https://www.donationalerts.com/r/xenerf</url>
+  <url type="bugtracker">https://github.com/xverizex/nem_desktop/issues</url>
 </component>
