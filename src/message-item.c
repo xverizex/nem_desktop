@@ -416,7 +416,7 @@ void message_item_copy (MessageItem *self)
 {
   char *t = malloc (self->length_text_in_char + 1);
   int index = 0;
-  for (int i = 0; i < self->length_text_in_char; i++)
+  for (int i = self->index_start; i <= self->index_end; i++)
     {
       if (index >= self->length_text_in_char) break;
       if (self->p[i].selected) {
