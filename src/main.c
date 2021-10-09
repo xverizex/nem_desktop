@@ -30,7 +30,6 @@
 
 static GtkWidget *register_window;
 static GtkWidget *main_window;
-static GtkWidget *popover;
 MessageItem *message_item;
 char *root_app;
 char *root_sounds;
@@ -103,14 +102,12 @@ static void app_activate_cb (GtkApplication *app, gpointer user_data)
 
   GMenuModel *menu_for_text = g_menu_new ();
   g_menu_append (menu_for_text, "COPY", "app.copy");
-  popover = gtk_popover_menu_new_from_model (menu_for_text);
 	g_signal_connect (register_window, "close-request", G_CALLBACK (windows_close_request_cb), NULL);
 
 	main_window = g_object_new (MAIN_TYPE_WINDOW,
 			"default-width", 1024,
 			"default-height", 600,
 			"app", app,
-      "popover", popover,
 			NULL);
 
 	g_object_set (register_window,

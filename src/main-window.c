@@ -67,7 +67,6 @@ struct _MainWindow {
 
   JsonReader *reader;
 	GstElement *new_message;
-  GtkWidget *popover;
 
 };
 
@@ -141,7 +140,6 @@ static void fill_arrays (MainWindow *self)
                                          "notification", self->notification,
                                          "ogio", self->ogio,
                                          "main_window", self,
-                                         "popover", self->popover,
                                          NULL);
 
 
@@ -199,7 +197,6 @@ static void fill_arrays_new_status (MainWindow *self)
                 "notification", self->notification,
                 "ogio", self->ogio,
                 "main_window", self,
-                "popover", self->popover,
                 NULL);
 
 	gtk_list_box_append (GTK_LIST_BOX (self->list_users), user_item);
@@ -626,7 +623,6 @@ typedef enum {
 	PROP_CONN = 1,
 	PROP_NOTIFICATION,
 	PROP_APPLICATION,
-  PROP_POPOVER,
 	N_PROPERTIES
 } MainWindowProperty;
 
@@ -640,9 +636,6 @@ static void main_window_set_property (GObject *object,
 	MainWindow *self = MAIN_WINDOW (object);
 
 	switch ((MainWindowProperty) property_id) {
-  case PROP_POPOVER:
-    self->popover = g_value_get_object (value);
-    break;
 		case PROP_CONN:
       if (self->conn) g_object_unref (self->conn);
       if (self->igio) g_io_stream_close (self->gio, NULL, NULL);
@@ -703,13 +696,6 @@ static void main_window_class_init (MainWindowClass *klass) {
 			"app",
 			"app",
 			"app",
-			G_TYPE_OBJECT,
-			G_PARAM_WRITABLE
-			);
-obj_properties[PROP_POPOVER] = g_param_spec_object (
-			"popover",
-			"popover",
-      "popover",
 			G_TYPE_OBJECT,
 			G_PARAM_WRITABLE
 			);

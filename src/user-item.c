@@ -58,7 +58,6 @@ struct _UserItem {
 	GtkApplication *app;
 	gboolean handshaked;
 	GtkWidget *main_window;
-  GtkWidget *popover;
 };
 
 G_DEFINE_TYPE (UserItem, user_item, GTK_TYPE_FRAME)
@@ -76,7 +75,6 @@ typedef enum {
 	PROP_NOTIFICATION,
 	PROP_APP,
 	PROP_MAIN_WINDOW,
-  PROP_POPOVER,
 	N_PROPERTIES
 } UserItemProperty;
 
@@ -334,9 +332,6 @@ static void user_item_set_property (GObject *object,
 	UserItem *self = USER_ITEM (object);
 
 	switch ((UserItemProperty) property_id) {
-  case PROP_POPOVER:
-    self->popover = g_value_get_object (value);
-    break;
 		case PROP_ICON:
 			self->icon = g_value_dup_string (value);
 			break;
@@ -537,14 +532,6 @@ static void user_item_class_init (UserItemClass *klass) {
 			"main_window",
 			"main window",
 			"main window",
-			G_TYPE_OBJECT,
-			G_PARAM_WRITABLE
-			);
-
-  obj_properties[PROP_POPOVER] = g_param_spec_object (
-			"popover",
-			"popover",
-			"popover",
 			G_TYPE_OBJECT,
 			G_PARAM_WRITABLE
 			);

@@ -67,7 +67,6 @@ typedef enum {
   PROP_ID,
   PROP_MAIN_WINDOW,
   PROP_APP,
-  PROP_POPOVER,
 	N_PROPERTIES
 } MessageItemProperties;
 
@@ -160,11 +159,6 @@ static void message_item_set_property (GObject *object,
 	MessageItem *self = MESSAGE_ITEM (object);
 
 	switch ((MessageItemProperties) property_id) {
-  case PROP_POPOVER:
-      {
-        self->popover = g_value_get_object (value);
-        break;
-      }
   case PROP_APP:
       {
         self->app = g_value_get_object (value);
@@ -278,13 +272,6 @@ static void message_item_class_init (MessageItemClass *klass) {
 			"app",
 			"app",
       "app",
-			G_TYPE_OBJECT,
-			G_PARAM_WRITABLE
-			);
-  obj_properties[PROP_POPOVER] = g_param_spec_object (
-			"popover",
-			"popover",
-      "popover",
 			G_TYPE_OBJECT,
 			G_PARAM_WRITABLE
 			);
