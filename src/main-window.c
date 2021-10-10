@@ -488,7 +488,6 @@ static void receive_handler_cb (GObject *source_object,
   }
   self->buf[readed] = 0;
 
-
   g_autoptr(JsonParser) parser = json_parser_new ();
   if (!json_parser_load_from_data (parser, self->buf, -1, &error)) {
     if (error) {

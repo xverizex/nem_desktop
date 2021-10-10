@@ -52,12 +52,22 @@ struct _UserItem {
 	GtkWidget *box_frame_chat;
 	GtkWidget *scroll;
 	GtkWidget *box_scroll;
+	GtkWidget *box_for_entry;
 	GtkWidget *entry_input_text;
+	GtkWidget *button_entry_file;
 	GOutputStream *ogio;
 	GNotification *notification;
 	GtkApplication *app;
 	gboolean handshaked;
 	GtkWidget *main_window;
+	GtkWidget *window_add_file;
+	GtkWidget *frame_add_file;
+	GtkWidget *entry_filename;
+	GtkWidget *entry_path;
+	GtkWidget *button_path;
+	GtkWidget *button_upload;
+	GtkWidget *box_frame_add_file;
+	GtkWidget *native;
 };
 
 G_DEFINE_TYPE (UserItem, user_item, GTK_TYPE_FRAME)
@@ -121,6 +131,8 @@ static const char *styles =
 "label#item { color: #000000; font-size: 21px; }"
 "image#item { min-width: 48px; min-height: 48px; margin: 8px; }"
 "frame#msg { background-color: #b0bfd1; margin-top: 8px; margin-bottom: 8px; margin-left: 16px; margin-right: 16px; }"
+"window#add_file { background-color: #ffffff; } "
+"frame#add_file { background-color: #8c8c8c; margin: 48px; }"
 ;
 
 
@@ -270,6 +282,177 @@ static void entry_input_text_cb (GtkEntry *entry, gpointer user_data) {
 #endif
 }
 
+static void button_path_response_cb (GtkNativeDialog *native,
+		int response,
+		gpointer user_data)
+{
+	UserItem *self = USER_ITEM (user_data);
+
+	if (response == GTK_RESPONSE_ACCEPT)
+	{
+		GtkFileChooser *chooser = GTK_FILE_CHOOSER (native);
+		GFile *file = gtk_file_chooser_get_file (chooser);
+		const char *path = g_file_get_path (file);
+		GtkEntryBuffer *buffer = gtk_entry_get_buffer (GTK_ENTRY (self->entry_path));
+		gtk_entry_buffer_set_text (buffer, path, -1);
+	}
+
+	g_object_unref (native);
+}
+
+static void button_path_clicked_cb (GtkButton *button, gpointer user_data)
+{
+	UserItem *self = USER_ITEM (user_data);
+	gtk_native_dialog_show (GTK_NATIVE_DIALOG (self->native));
+}
+
+static void send_file (const char *filename, const char *name, char *path, const unsigned char *buffer, UserItem *self) {
+	g_print ("send_file\n");
+	unsigned char *to = calloc (257, 1);
+	if (!to) return;
+
+	g_print ("fopen path\n");
+	FILE *fp = fopen (path, "rb");
+	if (!fp) {
+		free (to);
+		return;
+	}
+
+	int padding = RSA_PKCS1_PADDING;
+
+	int buffer_len = strlen ((const char *) buffer);
+	RSA *rsa = PEM_read_RSA_PUBKEY (fp, NULL, NULL, NULL);
+
+	g_print ("rsa public encrypt\n");
+	long int encrypted_length = RSA_public_encrypt (buffer_len, (const unsigned char *) buffer, to, rsa, padding);
+	g_print ("encrypted send file: %ld\n", encrypted_length);
+	char *buf = calloc (encrypted_length * 2 + 1, 1);
+	if (!buf) {
+		fclose (fp);
+		free (to);
+		return;
+	}
+	int n = 0;
+	char *s = buf;
+	for (int i = 0; i < encrypted_length; i++) {
+		sprintf (s, "%02x%n", to[i], &n);
+		s += n;
+	}
+
+	JsonBuilder *builder = json_builder_new ();
+	json_builder_begin_object (builder);
+	json_builder_set_member_name (builder, "type");
+	json_builder_add_string_value (builder, "file_add");
+	json_builder_set_member_name (builder, "to");
+	json_builder_add_string_value (builder, name);
+	json_builder_set_member_name (builder, "filename");
+	json_builder_add_string_value (builder, filename);
+	json_builder_set_member_name (builder, "data");
+	json_builder_add_string_value (builder, buf);
+	json_builder_end_object (builder);
+
+	JsonNode *node = json_builder_get_root (builder);
+	JsonGenerator *gen = json_generator_new ();
+	json_generator_set_root (gen, node);
+	gsize length = 0;
+	char *data = json_generator_to_data (gen, &length);
+
+	g_print ("write\n%s\n", data);
+	g_output_stream_write (G_OUTPUT_STREAM (self->ogio),
+			data,
+			length,
+			NULL,
+			NULL
+			);
+
+	g_object_unref (builder);
+	g_object_unref (gen);
+	free (data);
+	RSA_free (rsa);
+	free (to);
+	free (buf);
+}
+
+static void button_upload_clicked_cb (GtkButton *button, gpointer user_data)
+{
+	g_print ("button_upload_clicked_cb\n");
+	UserItem *self = USER_ITEM (user_data);
+
+	GtkEntryBuffer *buffer_filename = gtk_entry_get_buffer (GTK_ENTRY (self->entry_filename));
+	GtkEntryBuffer *buffer_path = gtk_entry_get_buffer (GTK_ENTRY (self->entry_path));
+	const char *filename = gtk_entry_buffer_get_text (buffer_filename);
+	const char *path = gtk_entry_buffer_get_text (buffer_path);
+
+	if (!strlen (filename) || !strlen (path)) 
+	{
+		g_notification_set_body (self->notification, "upload: fill all entries");
+		g_application_send_notification (self->app, NULL, self->notification);
+		return;
+	}
+
+	const char *name = user_item_get_name (USER_ITEM (self));
+
+	char path_crypto[256];
+	snprintf (path_crypto, 256, "%s/%s/crypto.pem", root_app, name);
+
+	unsigned char *buf = NULL;
+	GError *error = NULL;
+
+	g_print ("g_file_new_for_path: %s\n", path);
+	GFile *file = g_file_new_for_path (path);
+	g_print ("g_file_load_bytes\n");
+
+	buf = (unsigned char *) g_file_load_bytes (file,
+			NULL,
+			NULL,
+			&error);
+	if (error) {
+		g_print ("%s:%s:%s\n", __FILE__, __LINE__, error->message);
+		g_error_free (error);
+		error = NULL;
+	}
+
+	send_file (filename, name, path_crypto, buf, self);
+}
+
+static void create_window_add_file (UserItem *self) 
+{
+	self->window_add_file = gtk_window_new ();
+	self->frame_add_file = gtk_frame_new (NULL);
+	self->entry_filename = gtk_entry_new ();
+	self->entry_path = gtk_entry_new ();
+	self->button_path = gtk_button_new_with_label ("PATH");
+	self->native = gtk_file_chooser_native_new ("PATH",
+			self->window_add_file,
+			GTK_FILE_CHOOSER_ACTION_OPEN,
+			"Open",
+			"Cancel");
+	g_signal_connect (self->native, "response", G_CALLBACK (button_path_response_cb), self);
+	g_signal_connect (self->button_path, "clicked", G_CALLBACK (button_path_clicked_cb), self);
+	self->button_upload = gtk_button_new_with_label ("UPLOAD");
+	g_signal_connect (self->button_upload, "clicked", G_CALLBACK (button_upload_clicked_cb), self);
+	self->box_frame_add_file = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+	GtkWidget *box_path = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_box_append (GTK_BOX (box_path), self->entry_path);
+	gtk_box_append (GTK_BOX (box_path), self->button_path);
+	gtk_box_append (GTK_BOX (self->box_frame_add_file), self->entry_filename);
+	gtk_box_append (GTK_BOX (self->box_frame_add_file), box_path);
+	gtk_box_append (GTK_BOX (self->box_frame_add_file), self->button_upload);
+
+	gtk_window_set_child (GTK_WINDOW (self->window_add_file), self->frame_add_file);
+	gtk_frame_set_child (GTK_FRAME (self->frame_add_file), self->box_frame_add_file);
+
+	gtk_widget_set_name (self->window_add_file, "add_file");
+	gtk_widget_set_name (self->frame_add_file, "add_file");
+}
+
+static void button_entry_file_cb (GtkButton *button, gpointer user_data)
+{
+	UserItem *self = USER_ITEM (user_data);
+
+	gtk_widget_set_visible (self->window_add_file, TRUE);
+}
+
 static void user_item_init (UserItem *self) {
 	self->display = gdk_display_get_default ();
 	self->provider = gtk_css_provider_new ();
@@ -277,14 +460,23 @@ static void user_item_init (UserItem *self) {
 	gtk_style_context_add_provider_for_display (self->display, (GtkStyleProvider *) self->provider, GTK_STYLE_PROVIDER_PRIORITY_USER);
 	gtk_widget_set_name (GTK_WIDGET (self), "noblink");
 
+	create_window_add_file (self);
+
 	self->box_frame_chat = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 	self->box_scroll = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+	self->box_for_entry = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	self->button_entry_file = g_object_new (GTK_TYPE_BUTTON,
+			"child", gtk_image_new_from_resource ("/io/github/xverizex/nem_desktop/add_file.svg"),
+			NULL);
+	g_signal_connect (self->button_entry_file, "clicked", G_CALLBACK (button_entry_file_cb), self);
 	self->entry_input_text = gtk_entry_new ();
 	g_signal_connect (self->entry_input_text, "activate", G_CALLBACK (entry_input_text_cb), self);
 	self->scroll = gtk_scrolled_window_new ();
 	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (self->scroll), self->box_scroll);
 	gtk_box_append (GTK_BOX (self->box_frame_chat), self->scroll);
-	gtk_box_append (GTK_BOX (self->box_frame_chat), self->entry_input_text);
+	gtk_box_append (GTK_BOX (self->box_for_entry), self->button_entry_file);
+	gtk_box_append (GTK_BOX (self->box_for_entry), self->entry_input_text);
+	gtk_box_append (GTK_BOX (self->box_frame_chat), self->box_for_entry);
 	g_object_set (self->box_scroll,
 			"vexpand", TRUE,
 			"hexpand", TRUE,
