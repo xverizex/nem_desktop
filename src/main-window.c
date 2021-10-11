@@ -60,6 +60,8 @@ struct _MainWindow {
 	GtkWidget *handshake_button;
 	GtkWidget *storage_button;
 	GtkWidget *image_storage;
+	GtkWidget *storage_window;
+	GtkWidget *list_box_storage;
 	GMenu *menu;
 
 	GIOStream *gio;
@@ -671,6 +673,7 @@ static const char *styles =
 "frame#list { background-color: #000000; }"
 "list#list_users { background-color: #d9d9d9; font-size: 16px; }"
 "list#list_users row:selected { background-color: #9ecaff; min-height: 64px; font-size: 16px; }"
+"list#list_files { background-color: #d9d9d9; margin: 32px; }"
 "image#header { min-width: 32px; min-height: 32px; }"
 ;
 
@@ -889,13 +892,33 @@ void main_window_play_new_message (MainWindow *self)
 	gst_element_set_state (self->new_message, GST_STATE_PLAYING);
 }
 
+static gboolean storage_window_close_request_cb (GtkWindow *window,
+		gpointer user_data)
+{
+	gtk_widget_set_visible (GTK_WIDGET (window), FALSE);
+	return TRUE;
+}
+
+static void create_storage_window (MainWindow *self)
+{
+	self->storage_window = gtk_window_new ();
+	self->list_box_storage = gtk_list_box_new ();
+	gtk_window_set_child (GTK_WINDOW (self->storage_window), self->list_box_storage);
+	gtk_widget_set_name (self->list_box_storage, "list_files");
+
+	g_signal_connect (self->storage_window, "close-request", G_CALLBACK (storage_window_close_request_cb), self);
+}
+
 static void storage_button_clicked_cb (GtkButton *button, gpointer user_data)
 {
 	MainWindow *self = MAIN_WINDOW (user_data);
+
+	gtk_widget_set_visible (self->storage_window, TRUE);
 }
 
 static void main_window_init (MainWindow *self)
 {
+	create_storage_window (self);
   GFile *ff = g_file_new_for_uri ("resource:///io/github/xverizex/nem_desktop/in_message.mp3");
 
 	GError *error = NULL;
