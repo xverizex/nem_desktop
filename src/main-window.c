@@ -58,6 +58,8 @@ struct _MainWindow {
 	GtkWidget *image_header_menu;
 	GtkWidget *menu_button;
 	GtkWidget *handshake_button;
+	GtkWidget *storage_button;
+	GtkWidget *image_storage;
 	GMenu *menu;
 
 	GIOStream *gio;
@@ -887,6 +889,11 @@ void main_window_play_new_message (MainWindow *self)
 	gst_element_set_state (self->new_message, GST_STATE_PLAYING);
 }
 
+static void storage_button_clicked_cb (GtkButton *button, gpointer user_data)
+{
+	MainWindow *self = MAIN_WINDOW (user_data);
+}
+
 static void main_window_init (MainWindow *self)
 {
   GFile *ff = g_file_new_for_uri ("resource:///io/github/xverizex/nem_desktop/in_message.mp3");
@@ -1015,6 +1022,14 @@ static void main_window_init (MainWindow *self)
 	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (self->handshake_button), FALSE);
 	g_signal_connect (self->handshake_button, "clicked", G_CALLBACK (handshake_button_clicked_cb), self);
 
+	self->storage_button = gtk_button_new ();
+	self->image_storage = g_object_new (GTK_TYPE_IMAGE,
+			"resource", "/io/github/xverizex/nem_desktop/storage.svg",
+			"icon-size", GTK_ICON_SIZE_NORMAL,
+			NULL);
+	gtk_button_set_child (GTK_BUTTON (self->storage_button), self->image_storage);
+	gtk_widget_set_name (self->image_storage,  "header");
+	g_signal_connect (self->storage_button, "clicked", G_CALLBACK (storage_button_clicked_cb), self);
 
 	self->menu_button = g_object_new (GTK_TYPE_MENU_BUTTON,
                                     "icon-name", "open-menu",
@@ -1031,6 +1046,7 @@ static void main_window_init (MainWindow *self)
 
 	gtk_header_bar_pack_start (GTK_HEADER_BAR (self->header_bar), self->left_pane_button);
 	gtk_header_bar_pack_end (GTK_HEADER_BAR (self->header_bar), self->handshake_button);
+	gtk_header_bar_pack_end (GTK_HEADER_BAR (self->header_bar), self->storage_button);
 
 #if 0
 	for (int i = 0; i < 3; i++) {
