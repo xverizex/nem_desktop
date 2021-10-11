@@ -18,6 +18,7 @@
  */
 
 #include "file-storage.h"
+#include <openssl/ssl.h>
 
 struct _FileStorage {
 	GtkFrame parent_instance;
@@ -30,6 +31,7 @@ struct _FileStorage {
 	GtkWidget *label_filename;
 	char *filename;
 	char *data;
+	char *private_key;
 };
 
 G_DEFINE_TYPE (FileStorage, file_storage, GTK_TYPE_FRAME)
@@ -37,6 +39,7 @@ G_DEFINE_TYPE (FileStorage, file_storage, GTK_TYPE_FRAME)
 typedef enum {
 	PROP_FILENAME = 1,
 	PROP_DATA,
+	PROP_PRIVATE_KEY,
 	N_PROPERTIES
 } FileStorageProperty;
 
@@ -64,6 +67,10 @@ static void file_storage_set_property (GObject *object,
 		case PROP_DATA:
 			if (self->data) g_free (self->data);
 			self->data = g_value_dup_string (value);
+			break;
+		case PROP_PRIVATE_KEY:
+			if (self->private_key) g_free (self->private_key);
+			self->private_key = g_value_dup_string (value);
 			break;
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -115,7 +122,75 @@ static void file_storage_class_init (FileStorageClass *klass)
 			G_PARAM_READWRITE
 			);
 
+	obj_properties[PROP_PRIVATE_KEY] = g_param_spec_string (
+			"key",
+			"key",
+			"set key",
+			NULL,
+			G_PARAM_WRITABLE
+			);
+
 	g_object_class_install_properties (object_class, N_PROPERTIES, obj_properties);
+}	
+
+static unsigned char get_hex (char d, int cq)
+{
+        switch (d) {
+                case '0'...'9':
+                        return (d - 48) * cq;
+                case 'a'...'f':
+                        return (d - 97 + 10) * cq;
+                default:
+                        return 0;
+        }
+}
+
+static unsigned char *convert_data_to_hex (const char *data, size_t *ll)
+{
+        *ll = 0;
+        int len = strlen (data);
+        unsigned char *dt = calloc (len, 1);
+
+        unsigned char *d = dt;
+        for (int i = 0; i < len; i += 2) {
+                *d = get_hex (data[i + 0], 16) + get_hex (data[i + 1], 1);
+                d++;
+                (*ll)++;
+        }
+
+        return dt;
+}
+
+
+static void button_download_clicked_cb (GtkButton *button, gpointer user_data)
+{
+	FileStorage *self = FILE_STORAGE (user_data);
+	 
+        unsigned char *to = calloc (1024 * 1024 * 40, 1);
+        if (!to) return;
+
+        FILE *fp = fopen (self->private_key, "rb");
+        if (!fp) {
+                free (to);
+                return;
+        }
+
+        size_t len;
+        unsigned char *buffer = convert_data_to_hex (self->data, &len);
+
+        int padding = RSA_PKCS1_PADDING;
+
+        RSA *rsa = PEM_read_RSAPrivateKey (fp, NULL, NULL, NULL);
+
+        long int encrypted_length = RSA_private_decrypt (len, buffer, to, rsa, padding);
+	g_print ("download enc: %ld\n", encrypted_length);
+        RSA_free (rsa);
+
+	FILE *afp = fopen ("/home/cf/test.pdf", "w");
+	fprintf (afp, "%s", to);
+	fclose (afp);
+        free (to);
+        fclose (fp);
 }
 
 static void file_storage_init (FileStorage *self)
@@ -140,4 +215,5 @@ static void file_storage_init (FileStorage *self)
 
 	gtk_frame_set_child (GTK_FRAME (self), self->box);
 	gtk_widget_set_name (self->box, "storage");
+	g_signal_connect (self->button_download, "clicked", G_CALLBACK (button_download_clicked_cb), self);
 }

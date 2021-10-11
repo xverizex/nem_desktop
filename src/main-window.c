@@ -137,10 +137,12 @@ static void fill_file_storage (MainWindow *self)
 
 	if (!strncmp (name_from, from, strlen (from) + 1))
 	{
-		g_print ("filename is %s\n", filename);
+		char path[255];
+		snprintf (path, 255, "%s/%s/key.pem", root_app, from );
 		GtkWidget *item = g_object_new (FILE_TYPE_STORAGE,
 				"filename", filename,
 				"data", data,
+				"key", path,
 				NULL);
 		gtk_list_box_append (GTK_LIST_BOX (self->list_box_storage), item);
 	}
@@ -528,7 +530,6 @@ static void receive_handler_cb (GObject *source_object,
     return;
   }
   self->buf[readed] = 0;
-  g_print ("recv:\n%s\n", self->buf);
 
   g_autoptr(JsonParser) parser = json_parser_new ();
   if (!json_parser_load_from_data (parser, self->buf, -1, &error)) {

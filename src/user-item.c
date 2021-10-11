@@ -25,6 +25,7 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <json-glib/json-glib.h>
+#include <sys/stat.h>
 #include "message-item.h"
 #include "main-window.h"
 
@@ -306,9 +307,9 @@ static void button_path_clicked_cb (GtkButton *button, gpointer user_data)
 	gtk_native_dialog_show (GTK_NATIVE_DIALOG (self->native));
 }
 
-static void send_file (const char *filename, const char *name, char *path, const unsigned char *buffer, UserItem *self) {
+static void send_file (const char *filename, const char *name, char *path, const unsigned char *buffer, long int length, UserItem *self) {
 	g_print ("send_file\n");
-	unsigned char *to = calloc (257, 1);
+	unsigned char *to = calloc (1024, 1);
 	if (!to) return;
 
 	g_print ("fopen path\n");
@@ -320,11 +321,10 @@ static void send_file (const char *filename, const char *name, char *path, const
 
 	int padding = RSA_PKCS1_PADDING;
 
-	int buffer_len = strlen ((const char *) buffer);
 	RSA *rsa = PEM_read_RSA_PUBKEY (fp, NULL, NULL, NULL);
 
 	g_print ("rsa public encrypt\n");
-	long int encrypted_length = RSA_public_encrypt (buffer_len, (const unsigned char *) buffer, to, rsa, padding);
+	long int encrypted_length = RSA_public_encrypt (length, (const unsigned char *) buffer, to, rsa, padding);
 	g_print ("encrypted send file: %ld\n", encrypted_length);
 	char *buf = calloc (encrypted_length * 2 + 1, 1);
 	if (!buf) {
@@ -354,10 +354,8 @@ static void send_file (const char *filename, const char *name, char *path, const
 	JsonNode *node = json_builder_get_root (builder);
 	JsonGenerator *gen = json_generator_new ();
 	json_generator_set_root (gen, node);
-	gsize length = 0;
 	char *data = json_generator_to_data (gen, &length);
 
-	g_print ("write\n%s\n", data);
 	g_output_stream_write (G_OUTPUT_STREAM (self->ogio),
 			data,
 			length,
@@ -398,9 +396,7 @@ static void button_upload_clicked_cb (GtkButton *button, gpointer user_data)
 	unsigned char *buf = NULL;
 	GError *error = NULL;
 
-	g_print ("g_file_new_for_path: %s\n", path);
 	GFile *file = g_file_new_for_path (path);
-	g_print ("g_file_load_bytes\n");
 
 	buf = (unsigned char *) g_file_load_bytes (file,
 			NULL,
@@ -410,9 +406,20 @@ static void button_upload_clicked_cb (GtkButton *button, gpointer user_data)
 		g_print ("%s:%s:%s\n", __FILE__, __LINE__, error->message);
 		g_error_free (error);
 		error = NULL;
+		return;
 	}
 
-	send_file (filename, name, path_crypto, buf, self);
+	struct stat st;
+	stat (path, &st);
+
+	unsigned long int length = st.st_size;
+	printf ("length of file: %ld\n", length);
+
+	send_file (filename, name, path_crypto, buf, length, self);
+
+	g_print ("free buf\n");
+	g_free (buf);
+	g_print ("end free buf\n");
 }
 
 static void create_window_add_file (UserItem *self) 
