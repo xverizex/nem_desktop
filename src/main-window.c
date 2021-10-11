@@ -76,7 +76,7 @@ struct _MainWindow {
 
 G_DEFINE_TYPE (MainWindow, main_window, GTK_TYPE_WINDOW)
 
-#define TOTAL_SIZE      1024 * 1024 * 30
+#define TOTAL_SIZE      4096
 
 GtkWidget *main_window_get_list_box (MainWindow *self)
 {
