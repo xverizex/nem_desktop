@@ -20,6 +20,7 @@
 
 #include "main-window.h"
 #include "user-item.h"
+#include "file-storage.h"
 #include <json-glib/json-glib.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -107,6 +108,42 @@ static void user_item_row_selected_cb (GtkListBox *box,
 
 	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (self->handshake_button), handshaking);
 	user_item_set_chat (USER_ITEM (child));
+}
+
+static void fill_file_storage (MainWindow *self)
+{
+	json_reader_read_member (self->reader, "from");
+	JsonNode *jfrom = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "filename");
+	JsonNode *jname = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "data");
+	JsonNode *jdata = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	const char *from = json_node_get_string (jfrom);
+	const char *filename = json_node_get_string (jname);
+	const char *data = json_node_get_string (jdata);
+
+	GtkListBoxRow *row_sel_child = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->list_users));
+	GtkWidget *sel_child = gtk_list_box_row_get_child (row_sel_child);
+	char *name_from = NULL;
+	g_object_get (sel_child,
+			"name", &name_from,
+			NULL);
+
+	if (!strncmp (name_from, from, strlen (from) + 1))
+	{
+		g_print ("filename is %s\n", filename);
+		GtkWidget *item = g_object_new (FILE_TYPE_STORAGE,
+				"filename", filename,
+				"data", data,
+				NULL);
+		gtk_list_box_append (GTK_LIST_BOX (self->list_box_storage), item);
+	}
 }
 
 static void fill_arrays (MainWindow *self)
@@ -491,6 +528,7 @@ static void receive_handler_cb (GObject *source_object,
     return;
   }
   self->buf[readed] = 0;
+  g_print ("recv:\n%s\n", self->buf);
 
   g_autoptr(JsonParser) parser = json_parser_new ();
   if (!json_parser_load_from_data (parser, self->buf, -1, &error)) {
@@ -508,6 +546,12 @@ static void receive_handler_cb (GObject *source_object,
   JsonNode *jtype = json_reader_get_value (reader);
   json_reader_end_member (reader);
   const char *type = json_node_get_string (jtype);
+
+  if (!strncmp (type, "storage_files", 14)) {
+	  self->reader = reader;
+	  fill_file_storage (self);
+	  goto end;
+  }
 
 	if (!strncmp (type, "all_users", 10)) {
     self->reader = reader;
@@ -580,9 +624,9 @@ void main_window_feed (MainWindow *self)
 	JsonNode *node = build_json_feed ();
 
 	g_autoptr(JsonGenerator) gen = json_generator_new ();
-  json_generator_set_root (gen, node);
-  gsize length;
-  g_autofree char *buffer = json_generator_to_data (gen, &length);
+	json_generator_set_root (gen, node);
+	gsize length;
+	g_autofree char *buffer = json_generator_to_data (gen, &length);
 
 	GError *error = NULL;
 
@@ -593,6 +637,7 @@ void main_window_feed (MainWindow *self)
 			&error);
 	if (error) {
 		g_print ("error send: %s\n", error->message);
+		g_error_free (error);
 	}
 
   //g_object_unref (node);
@@ -909,11 +954,61 @@ static void create_storage_window (MainWindow *self)
 	g_signal_connect (self->storage_window, "close-request", G_CALLBACK (storage_window_close_request_cb), self);
 }
 
+static void get_list_storage_files (MainWindow *self, const char *name)
+{
+  	g_autoptr(JsonBuilder) builder = json_builder_new ();
+	json_builder_begin_object (builder);
+	json_builder_set_member_name (builder, "type");
+	json_builder_add_string_value (builder, "storage_files");
+	json_builder_set_member_name (builder, "from");
+	json_builder_add_string_value (builder, name);
+	json_builder_end_object (builder);
+
+	JsonNode *node = json_builder_get_root (builder);
+	self->ogio = g_io_stream_get_output_stream (G_IO_STREAM (self->conn));
+
+	g_autoptr(JsonGenerator) gen = json_generator_new ();
+	json_generator_set_root (gen, node);
+	gsize length;
+	g_autofree char *buffer = json_generator_to_data (gen, &length);
+
+	GError *error = NULL;
+
+	g_output_stream_write (G_OUTPUT_STREAM (self->ogio),
+			buffer,
+			length,
+			NULL,
+			&error);
+	if (error) {
+		g_print ("error send: %s\n", error->message);
+		g_error_free (error);
+	}
+}
+
 static void storage_button_clicked_cb (GtkButton *button, gpointer user_data)
 {
 	MainWindow *self = MAIN_WINDOW (user_data);
 
 	gtk_widget_set_visible (self->storage_window, TRUE);
+
+	GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->list_users));
+	if (!row) return;
+
+	GtkWidget *sel_child = gtk_list_box_row_get_child (row);
+	const char *name = user_item_get_name (USER_ITEM (sel_child));
+
+	while (1)
+	{
+		GtkListBoxRow *r = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->list_box_storage), 0);
+		if (r != NULL)
+		{
+			gtk_list_box_remove (GTK_LIST_BOX (self->list_box_storage), r);
+		} else {
+			break;
+		}
+	}
+
+	get_list_storage_files (self, name);
 }
 
 static void main_window_init (MainWindow *self)

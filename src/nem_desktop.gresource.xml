@@ -9,5 +9,6 @@
     <file alias="in_message.mp3">../data/sounds/in_message.mp3</file>
     <file alias="add_file.svg">../data/icons/hicolor/symbolic/file.svg</file>
     <file alias="storage.svg">../data/icons/hicolor/symbolic/storage.svg</file>
+    <file alias="download.svg">../data/icons/hicolor/symbolic/download.svg</file>
   </gresource>
 </gresources>

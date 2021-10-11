@@ -4,7 +4,8 @@ nem_desktop_sources = [
     'message-item.c',
     'register-window.c',
     'user-item.c',
-    'cert.c'
+    'cert.c',
+    'file-storage.c'
   ]
 
 nem_desktop_deps = [
