@@ -19,6 +19,7 @@
 
 #include "file-storage.h"
 #include <openssl/ssl.h>
+#include <openssl/aes.h>
 
 struct _FileStorage {
 	GtkFrame parent_instance;
@@ -32,6 +33,8 @@ struct _FileStorage {
 	char *filename;
 	char *data;
 	char *private_key;
+	char *ckey;
+	char *ivec;
 };
 
 G_DEFINE_TYPE (FileStorage, file_storage, GTK_TYPE_FRAME)
@@ -40,6 +43,8 @@ typedef enum {
 	PROP_FILENAME = 1,
 	PROP_DATA,
 	PROP_PRIVATE_KEY,
+	PROP_CKEY,
+	PROP_IVEC,
 	N_PROPERTIES
 } FileStorageProperty;
 
@@ -71,6 +76,14 @@ static void file_storage_set_property (GObject *object,
 		case PROP_PRIVATE_KEY:
 			if (self->private_key) g_free (self->private_key);
 			self->private_key = g_value_dup_string (value);
+			break;
+		case PROP_CKEY:
+			if (self->ckey) g_free (self->ckey);
+			self->ckey = g_value_dup_string (value);
+			break;
+		case PROP_IVEC:
+			if (self->ivec) g_free (self->ivec);
+			self->ivec = g_value_dup_string (value);
 			break;
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -130,6 +143,22 @@ static void file_storage_class_init (FileStorageClass *klass)
 			G_PARAM_WRITABLE
 			);
 
+	obj_properties[PROP_CKEY] = g_param_spec_string (
+			"ckey",
+			"ckey",
+			"set ckey",
+			NULL,
+			G_PARAM_WRITABLE
+			);
+
+	obj_properties[PROP_IVEC] = g_param_spec_string (
+			"ivec",
+			"ivec",
+			"set ivec",
+			NULL,
+			G_PARAM_WRITABLE
+			);
+
 	g_object_class_install_properties (object_class, N_PROPERTIES, obj_properties);
 }	
 
@@ -149,7 +178,7 @@ static unsigned char *convert_data_to_hex (const char *data, size_t *ll)
 {
         *ll = 0;
         int len = strlen (data);
-        unsigned char *dt = calloc (len, 1);
+        unsigned char *dt = calloc (len + 1, 1);
 
         unsigned char *d = dt;
         for (int i = 0; i < len; i += 2) {
@@ -161,36 +190,87 @@ static unsigned char *convert_data_to_hex (const char *data, size_t *ll)
         return dt;
 }
 
-
-static void button_download_clicked_cb (GtkButton *button, gpointer user_data)
+static char *to_print_hex (unsigned char *data, const long int length)
 {
-	FileStorage *self = FILE_STORAGE (user_data);
-	 
-        unsigned char *to = calloc (1024 * 1024 * 40, 1);
-        if (!to) return;
-
-        FILE *fp = fopen (self->private_key, "rb");
-        if (!fp) {
-                free (to);
-                return;
+        char *buf = calloc (length * 2 + 1, 1);
+        if (!buf) {
+		g_print ("no calloc line: %s\n", __LINE__);
+                return NULL;
+        }
+        int n = 0;
+        char *s = buf;
+        for (int i = 0; i < length; i++) {
+                sprintf (s, "%02x%n", data[i], &n);
+                s += n;
         }
 
-        size_t len;
-        unsigned char *buffer = convert_data_to_hex (self->data, &len);
+        return buf;
+}
+
+static char *_rsa_decrypt (const char *private_key, const char *p)
+{
+        unsigned char to[256];
+
+        FILE *fp = fopen (private_key, "rb");
+        if (!fp) {
+		g_print ("not open\n");
+                return NULL;
+        }
 
         int padding = RSA_PKCS1_PADDING;
 
         RSA *rsa = PEM_read_RSAPrivateKey (fp, NULL, NULL, NULL);
+        int ll = 0;
+        unsigned char *hex = convert_data_to_hex (p, &ll);
 
-        long int encrypted_length = RSA_private_decrypt (len, buffer, to, rsa, padding);
-	g_print ("download enc: %ld\n", encrypted_length);
+        long int encrypted_length = RSA_private_decrypt (ll, (const unsigned char *) hex, to, rsa, padding);
+        free (hex);
+
         RSA_free (rsa);
-
-	FILE *afp = fopen ("/home/cf/test.pdf", "w");
-	fprintf (afp, "%s", to);
-	fclose (afp);
-        free (to);
         fclose (fp);
+	char *cc = calloc (strlen (to) + 1, 1);
+	strncpy (cc, to, strlen (to));
+
+        return cc;//to_print_hex (to, encrypted_length);
+}
+
+static void button_download_clicked_cb (GtkButton *button, gpointer user_data)
+{
+	FileStorage *self = FILE_STORAGE (user_data);
+
+        unsigned char indata[AES_BLOCK_SIZE];
+        unsigned char outdata[AES_BLOCK_SIZE];
+
+        char *ckey = _rsa_decrypt (self->private_key, self->ckey);
+        char *ivec = _rsa_decrypt (self->private_key, self->ivec);
+
+        AES_KEY key;
+        AES_set_encrypt_key (ckey, 128, &key);
+
+	size_t length;
+	unsigned char *hex = convert_data_to_hex (self->data, &length);
+	unsigned char *s = hex;
+	int num = 0;
+	FILE *afp = fopen ("/home/cf/test.pdf", "a");
+	while (1)
+        {
+		int size = AES_BLOCK_SIZE;
+		if ((length - AES_BLOCK_SIZE) < 0) {
+			size = length;
+		}
+
+                AES_cfb128_encrypt (s, outdata, size, &key, ivec, &num, AES_DECRYPT);
+                if ((length - AES_BLOCK_SIZE) < AES_BLOCK_SIZE)
+                {
+			fprintf (afp, "%s", outdata);
+                        break;
+                }
+		s += size;
+		fprintf (afp, "%s", outdata);
+        }
+
+	free (hex);
+	fclose (afp);
 }
 
 static void file_storage_init (FileStorage *self)

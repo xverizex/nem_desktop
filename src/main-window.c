@@ -124,9 +124,19 @@ static void fill_file_storage (MainWindow *self)
 	JsonNode *jdata = json_reader_get_value (self->reader);
 	json_reader_end_member (self->reader);
 
+	json_reader_read_member (self->reader, "ckey");
+	JsonNode *jckey = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "ivec");
+	JsonNode *jivec = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
 	const char *from = json_node_get_string (jfrom);
 	const char *filename = json_node_get_string (jname);
 	const char *data = json_node_get_string (jdata);
+	const char *ckey = json_node_get_string (jckey);
+	const char *ivec = json_node_get_string (jivec);
 
 	GtkListBoxRow *row_sel_child = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->list_users));
 	GtkWidget *sel_child = gtk_list_box_row_get_child (row_sel_child);
@@ -143,6 +153,8 @@ static void fill_file_storage (MainWindow *self)
 				"filename", filename,
 				"data", data,
 				"key", path,
+				"ckey", ckey,
+				"ivec", ivec,
 				NULL);
 		gtk_list_box_append (GTK_LIST_BOX (self->list_box_storage), item);
 	}
@@ -375,7 +387,7 @@ static void read_message_from (GtkWidget *child,
 		const int show_notification)
 {
   (void) self;
-	unsigned char *to = calloc (1024 * 1024 * 30, 1);
+	unsigned char *to = calloc (4096, 1);
 	if (!to) return;
 
 	FILE *fp = fopen (path, "rb");
@@ -389,7 +401,8 @@ static void read_message_from (GtkWidget *child,
 	RSA *rsa = PEM_read_RSAPrivateKey (fp, NULL, NULL, NULL);
 
 	int encrypted_length = RSA_private_decrypt (buffer_len, buffer, to, rsa, padding);
-  (void) encrypted_length;
+	g_print ("read_message_from: %d\n", encrypted_length);
+  	(void) encrypted_length;
 	RSA_free (rsa);
 
 	user_item_add_message (USER_ITEM (child), to, FROM_TO_ME, name, show_notification);
@@ -479,7 +492,7 @@ static void got_message (MainWindow *self)
 	const char *from = json_node_get_string (jfrom);
 	const char *data = json_node_get_string (jdata);
 
-	size_t len;
+	size_t len = 0;
 	unsigned char *dt = convert_data_to_hex (data, &len);
 
 	GtkWidget *child = get_child_by_name (self->list_users, from);

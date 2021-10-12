@@ -23,6 +23,7 @@
 #include <openssl/rsa.h>
 #include <openssl/evp.h>
 #include <openssl/bio.h>
+#include <openssl/aes.h>
 #include <openssl/err.h>
 #include <json-glib/json-glib.h>
 #include <sys/stat.h>
@@ -69,6 +70,7 @@ struct _UserItem {
 	GtkWidget *button_upload;
 	GtkWidget *box_frame_add_file;
 	GtkWidget *native;
+	GtkWidget *progress;
 };
 
 G_DEFINE_TYPE (UserItem, user_item, GTK_TYPE_FRAME)
@@ -182,7 +184,7 @@ void user_item_add_message (UserItem *self, const char *msg, int me, const char 
 }
 
 static void send_message_to ( const char *name, char *path, const char *buffer, UserItem *self) {
-	unsigned char *to = calloc (1024 * 1024 * 30, 1);
+	unsigned char *to = calloc (4096, 1);
 	if (!to) return;
 
 	FILE *fp = fopen (path, "rb");
@@ -307,38 +309,50 @@ static void button_path_clicked_cb (GtkButton *button, gpointer user_data)
 	gtk_native_dialog_show (GTK_NATIVE_DIALOG (self->native));
 }
 
-static void send_file (const char *filename, const char *name, char *path, const unsigned char *buffer, long int length, UserItem *self) {
-	g_print ("send_file\n");
-	unsigned char *to = calloc (1024, 1);
-	if (!to) return;
+static char *to_print_hex (unsigned char *data, const long int length)
+{
+	char *buf = calloc (length * 2 + 1, 1);
+	if (!buf) {
+		return NULL;
+	}
+	int n = 0;
+	char *s = buf;
+	for (int i = 0; i < length; i++) {
+		sprintf (s, "%02x%n", data[i], &n);
+		s += n;
+	}
 
-	g_print ("fopen path\n");
-	FILE *fp = fopen (path, "rb");
+	return buf;
+}
+
+static char *_rsa_encrypt (const char *path_key, const char *p)
+{
+	unsigned char to[256];
+
+	FILE *fp = fopen (path_key, "rb");
 	if (!fp) {
-		free (to);
-		return;
+		return NULL;
 	}
 
 	int padding = RSA_PKCS1_PADDING;
 
 	RSA *rsa = PEM_read_RSA_PUBKEY (fp, NULL, NULL, NULL);
 
-	g_print ("rsa public encrypt\n");
-	long int encrypted_length = RSA_public_encrypt (length, (const unsigned char *) buffer, to, rsa, padding);
-	g_print ("encrypted send file: %ld\n", encrypted_length);
-	char *buf = calloc (encrypted_length * 2 + 1, 1);
-	if (!buf) {
-		fclose (fp);
-		free (to);
-		return;
-	}
-	int n = 0;
-	char *s = buf;
-	for (int i = 0; i < encrypted_length; i++) {
-		sprintf (s, "%02x%n", to[i], &n);
-		s += n;
-	}
+	long int encrypted_length = RSA_public_encrypt (16, (const unsigned char *) p, to, rsa, padding);
 
+	RSA_free (rsa);
+	fclose (fp);
+
+	return to_print_hex (to, encrypted_length);
+}
+static void build_and_send_block_data (const char *name, 
+		const char *filename, 
+		const char *encrypted_data, 
+		const char *buf_ckey,
+		const char *buf_ivec,
+		const int is_start,
+		UserItem *self)
+{
 	JsonBuilder *builder = json_builder_new ();
 	json_builder_begin_object (builder);
 	json_builder_set_member_name (builder, "type");
@@ -347,10 +361,17 @@ static void send_file (const char *filename, const char *name, char *path, const
 	json_builder_add_string_value (builder, name);
 	json_builder_set_member_name (builder, "filename");
 	json_builder_add_string_value (builder, filename);
+	json_builder_set_member_name (builder, "ckey");
+	json_builder_add_string_value (builder, buf_ckey);
+	json_builder_set_member_name (builder, "ivec");
+	json_builder_add_string_value (builder, buf_ivec);
 	json_builder_set_member_name (builder, "data");
-	json_builder_add_string_value (builder, buf);
+	json_builder_add_string_value (builder, encrypted_data);
+	json_builder_set_member_name (builder, "is_start");
+	json_builder_add_int_value (builder, is_start);
 	json_builder_end_object (builder);
 
+	long int length;
 	JsonNode *node = json_builder_get_root (builder);
 	JsonGenerator *gen = json_generator_new ();
 	json_generator_set_root (gen, node);
@@ -365,15 +386,135 @@ static void send_file (const char *filename, const char *name, char *path, const
 
 	g_object_unref (builder);
 	g_object_unref (gen);
-	free (data);
-	RSA_free (rsa);
-	free (to);
-	free (buf);
+
+	g_free (data);
+}
+
+struct dtf {
+	GtkWidget *progress;
+	char *ckey;
+	char *ivec;
+	char *eckey;
+	char *eivec;
+	FILE *fp;
+	AES_KEY key;
+	int is_start;
+	size_t size;
+	size_t pos;
+	char *filename;
+	char *name;
+	UserItem *self;
+};
+
+struct vp {
+	GtkWidget *progress;
+	double fraction;
+};
+
+static gboolean set_fraction (gpointer user_data)
+{
+	struct vp *vp = (struct vp *) user_data;
+	gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (vp->progress), vp->fraction);
+	return FALSE;
+}
+
+static gpointer dtf_send_file (gpointer user_data)
+{
+	struct dtf *dtf = (struct dtf *) user_data;
+
+	unsigned char indata[AES_BLOCK_SIZE];
+	unsigned char outdata[AES_BLOCK_SIZE];
+
+
+	const int START = 0;
+	const int CONTINUE = 1;
+	int num = 0;
+	struct vp *vp = calloc (1, sizeof (struct vp));
+	vp->progress = dtf->progress;
+	while (1)
+	{
+		int readed  = fread (indata, 1, AES_BLOCK_SIZE, dtf->fp);
+		if (readed <= 0) {
+			goto end;
+		}
+
+		AES_cfb128_encrypt (indata, outdata, readed, &dtf->key, dtf->ivec, &num, AES_ENCRYPT);
+		char *encrypted_data = to_print_hex (outdata, AES_BLOCK_SIZE);
+		if (readed < AES_BLOCK_SIZE)
+		{
+			build_and_send_block_data (dtf->name, dtf->filename, encrypted_data, dtf->eckey, dtf->eivec, CONTINUE, dtf->self);
+			g_idle_add (set_fraction, vp);
+			free (encrypted_data);
+			goto end;
+		} else {
+			build_and_send_block_data (dtf->name, dtf->filename, encrypted_data, dtf->eckey, dtf->eivec, dtf->is_start, dtf->self);
+			free (encrypted_data);
+			vp->fraction = (double) (dtf->pos * 100) / (double) (dtf->size) / (double) (100.0);
+			g_idle_add (set_fraction, vp);
+		}
+		dtf->is_start = 1;
+		dtf->pos += AES_BLOCK_SIZE;
+	}
+
+end:
+	free (dtf->ckey);
+	free (dtf->ivec);
+	free (dtf->eckey);
+	free (dtf->eivec);
+	fclose (dtf->fp);
+	free (dtf);
+	free (vp);
+	return NULL;
+}
+
+static void send_file (const char *filename, const char *name, char *path_crypto, const unsigned char *path_file, UserItem *self) {
+
+
+	unsigned char *ckey = calloc (17, 1);
+	unsigned char *ivec = calloc (17, 1);
+	unsigned char *keys[] =
+	{
+		&ckey[0],
+		&ivec[0]
+	};
+	for (int ibuf = 0; ibuf < 2; ibuf++)
+	{
+		unsigned char *s = keys[ibuf];
+
+		for (int i = 0; i < 16; i++)
+		{
+			s[i] = random () % (126 - 48) + 48;
+		}
+		s[16] = 0;
+	}
+
+	char *buf_ckey_encrypted = _rsa_encrypt (path_crypto, ckey);
+	char *buf_ivec_encrypted = _rsa_encrypt (path_crypto, ivec);
+
+	struct stat st;
+	stat (path_file, &st);
+
+	FILE *fp = fopen (path_file, "r");
+
+	struct dtf *dtf = calloc (1, sizeof (struct dtf));
+	dtf->eckey = buf_ckey_encrypted;
+	dtf->eivec = buf_ivec_encrypted;
+	dtf->progress = self->progress;
+	dtf->fp = fp;
+	dtf->ckey = ckey;
+	dtf->ivec = ivec;
+	dtf->size = st.st_size;
+	dtf->pos = 0;
+	dtf->self = self;
+	dtf->filename = strdup (filename);
+	dtf->name = strdup (name);
+	AES_set_encrypt_key (ckey, 128, &dtf->key);
+
+	GThread *thread = g_thread_new ("dtf_send_files", dtf_send_file, dtf);
 }
 
 static void button_upload_clicked_cb (GtkButton *button, gpointer user_data)
 {
-	g_print ("button_upload_clicked_cb\n");
 	UserItem *self = USER_ITEM (user_data);
 
 	GtkEntryBuffer *buffer_filename = gtk_entry_get_buffer (GTK_ENTRY (self->entry_filename));
@@ -393,33 +534,9 @@ static void button_upload_clicked_cb (GtkButton *button, gpointer user_data)
 	char path_crypto[256];
 	snprintf (path_crypto, 256, "%s/%s/crypto.pem", root_app, name);
 
-	unsigned char *buf = NULL;
 	GError *error = NULL;
 
-	GFile *file = g_file_new_for_path (path);
-
-	buf = (unsigned char *) g_file_load_bytes (file,
-			NULL,
-			NULL,
-			&error);
-	if (error) {
-		g_print ("%s:%s:%s\n", __FILE__, __LINE__, error->message);
-		g_error_free (error);
-		error = NULL;
-		return;
-	}
-
-	struct stat st;
-	stat (path, &st);
-
-	unsigned long int length = st.st_size;
-	printf ("length of file: %ld\n", length);
-
-	send_file (filename, name, path_crypto, buf, length, self);
-
-	g_print ("free buf\n");
-	g_free (buf);
-	g_print ("end free buf\n");
+	send_file (filename, name, path_crypto, path, self);
 }
 
 static void create_window_add_file (UserItem *self) 
@@ -451,6 +568,9 @@ static void create_window_add_file (UserItem *self)
 
 	gtk_widget_set_name (self->window_add_file, "add_file");
 	gtk_widget_set_name (self->frame_add_file, "add_file");
+
+	self->progress = gtk_progress_bar_new ();
+	gtk_box_append (GTK_BOX (self->box_frame_add_file), self->progress);
 }
 
 static void button_entry_file_cb (GtkButton *button, gpointer user_data)
@@ -522,6 +642,7 @@ static void user_item_init (UserItem *self) {
 
 	g_object_set (self, "hexpand", TRUE, NULL);
 	g_object_set (self, "height-request", 64, NULL);
+
 }
 
 static void user_item_set_property (GObject *object,
