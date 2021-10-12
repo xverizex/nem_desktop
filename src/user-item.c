@@ -187,7 +187,7 @@ static void send_message_to ( const char *name, char *path, const char *buffer, 
 	unsigned char *to = calloc (4096, 1);
 	if (!to) return;
 
-	FILE *fp = fopen (path, "rb");
+	FILE *fp = fopen (path, "r");
 	if (!fp) {
 		free (to);
 		return;
@@ -409,12 +409,23 @@ struct dtf {
 struct vp {
 	GtkWidget *progress;
 	double fraction;
+	struct dtf *dtf;
 };
 
 static gboolean set_fraction (gpointer user_data)
 {
 	struct vp *vp = (struct vp *) user_data;
 	gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (vp->progress), vp->fraction);
+	if (vp->fraction == 1.0) {
+		struct dtf *dtf = vp->dtf;
+		free (dtf->ckey);
+		free (dtf->ivec);
+		free (dtf->eckey);
+		free (dtf->eivec);
+		fclose (dtf->fp);
+		free (dtf);
+		free (vp);
+	}
 	return FALSE;
 }
 
@@ -431,11 +442,14 @@ static gpointer dtf_send_file (gpointer user_data)
 	int num = 0;
 	struct vp *vp = calloc (1, sizeof (struct vp));
 	vp->progress = dtf->progress;
+	vp->dtf = dtf;
 	while (1)
 	{
+		memset (indata, 0, AES_BLOCK_SIZE);
+		memset (outdata, 0, AES_BLOCK_SIZE);
 		int readed  = fread (indata, 1, AES_BLOCK_SIZE, dtf->fp);
 		if (readed <= 0) {
-			goto end;
+			break;
 		}
 
 		AES_cfb128_encrypt (indata, outdata, readed, &dtf->key, dtf->ivec, &num, AES_ENCRYPT);
@@ -443,27 +457,21 @@ static gpointer dtf_send_file (gpointer user_data)
 		if (readed < AES_BLOCK_SIZE)
 		{
 			build_and_send_block_data (dtf->name, dtf->filename, encrypted_data, dtf->eckey, dtf->eivec, CONTINUE, dtf->self);
-			g_idle_add (set_fraction, vp);
 			free (encrypted_data);
-			goto end;
+			vp->fraction = 1.0;
+			g_idle_add (set_fraction, vp);
+			break;
 		} else {
 			build_and_send_block_data (dtf->name, dtf->filename, encrypted_data, dtf->eckey, dtf->eivec, dtf->is_start, dtf->self);
 			free (encrypted_data);
 			vp->fraction = (double) (dtf->pos * 100) / (double) (dtf->size) / (double) (100.0);
+			if (vp->fraction > 1.0) vp->fraction = 1.0;
 			g_idle_add (set_fraction, vp);
 		}
 		dtf->is_start = 1;
 		dtf->pos += AES_BLOCK_SIZE;
 	}
 
-end:
-	free (dtf->ckey);
-	free (dtf->ivec);
-	free (dtf->eckey);
-	free (dtf->eivec);
-	fclose (dtf->fp);
-	free (dtf);
-	free (vp);
 	return NULL;
 }
 

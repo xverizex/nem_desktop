@@ -529,7 +529,7 @@ static char *_rsa_decrypt (const char *private_key, const char *p)
 {
         unsigned char to[256];
 
-        FILE *fp = fopen (private_key, "rb");
+        FILE *fp = fopen (private_key, "r");
         if (!fp) {
 		g_print ("not open\n");
                 return NULL;
@@ -540,14 +540,19 @@ static char *_rsa_decrypt (const char *private_key, const char *p)
         RSA *rsa = PEM_read_RSAPrivateKey (fp, NULL, NULL, NULL);
         int ll = 0;
         unsigned char *hex = convert_data_to_hex (p, &ll);
+	for (int i = 0; i < ll; i++) {
+//		g_print ("%02x", hex[i]);
+	}
+	g_print ("\n");
 
         long int encrypted_length = RSA_private_decrypt (ll, (const unsigned char *) hex, to, rsa, padding);
+	g_print ("rsa decrypt: %d\n", encrypted_length);
         free (hex);
 
         RSA_free (rsa);
         fclose (fp);
-	char *cc = calloc (strlen (to) + 1, 1);
-	strncpy (cc, to, strlen (to));
+	char *cc = calloc (encrypted_length + 1, 1);
+	strncpy (cc, to, encrypted_length);
 
         return cc;//to_print_hex (to, encrypted_length);
 }
@@ -610,6 +615,8 @@ static void getting_file (MainWindow *self)
         char *ivec = _rsa_decrypt (private_key, eivec);
 
         AES_KEY key;
+	g_print ("ckey: %s\n", ckey);
+	g_print ("ivec: %s\n", ivec);
         AES_set_encrypt_key (ckey, 128, &key);
 
 	size_t length;
