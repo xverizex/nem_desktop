@@ -32,10 +32,12 @@
 #include <openssl/evp.h>
 #include <openssl/bio.h>
 #include <openssl/err.h>
+#include <openssl/aes.h>
 #include <gst/gst.h>
 
 extern char *root_app;
 extern char *root_sounds;
+extern char *download_app;
 
 struct _MainWindow {
 	GtkWindow parent_instance;
@@ -120,10 +122,6 @@ static void fill_file_storage (MainWindow *self)
 	JsonNode *jname = json_reader_get_value (self->reader);
 	json_reader_end_member (self->reader);
 
-	json_reader_read_member (self->reader, "data");
-	JsonNode *jdata = json_reader_get_value (self->reader);
-	json_reader_end_member (self->reader);
-
 	json_reader_read_member (self->reader, "ckey");
 	JsonNode *jckey = json_reader_get_value (self->reader);
 	json_reader_end_member (self->reader);
@@ -134,7 +132,6 @@ static void fill_file_storage (MainWindow *self)
 
 	const char *from = json_node_get_string (jfrom);
 	const char *filename = json_node_get_string (jname);
-	const char *data = json_node_get_string (jdata);
 	const char *ckey = json_node_get_string (jckey);
 	const char *ivec = json_node_get_string (jivec);
 
@@ -148,13 +145,14 @@ static void fill_file_storage (MainWindow *self)
 	if (!strncmp (name_from, from, strlen (from) + 1))
 	{
 		char path[255];
-		snprintf (path, 255, "%s/%s/key.pem", root_app, from );
+		snprintf (path, 255, "%s/%s/crypto.pem", root_app, from );
 		GtkWidget *item = g_object_new (FILE_TYPE_STORAGE,
 				"filename", filename,
-				"data", data,
+				"from", from,
 				"key", path,
 				"ckey", ckey,
 				"ivec", ivec,
+				"ogio", self->ogio,
 				NULL);
 		gtk_list_box_append (GTK_LIST_BOX (self->list_box_storage), item);
 	}
@@ -387,7 +385,7 @@ static void read_message_from (GtkWidget *child,
 		const int show_notification)
 {
   (void) self;
-	unsigned char *to = calloc (4096, 1);
+	unsigned char *to = calloc (1024 * 1024 * 30, 1);
 	if (!to) return;
 
 	FILE *fp = fopen (path, "rb");
@@ -401,8 +399,7 @@ static void read_message_from (GtkWidget *child,
 	RSA *rsa = PEM_read_RSAPrivateKey (fp, NULL, NULL, NULL);
 
 	int encrypted_length = RSA_private_decrypt (buffer_len, buffer, to, rsa, padding);
-	g_print ("read_message_from: %d\n", encrypted_length);
-  	(void) encrypted_length;
+  (void) encrypted_length;
 	RSA_free (rsa);
 
 	user_item_add_message (USER_ITEM (child), to, FROM_TO_ME, name, show_notification);
@@ -492,7 +489,7 @@ static void got_message (MainWindow *self)
 	const char *from = json_node_get_string (jfrom);
 	const char *data = json_node_get_string (jdata);
 
-	size_t len = 0;
+	size_t len;
 	unsigned char *dt = convert_data_to_hex (data, &len);
 
 	GtkWidget *child = get_child_by_name (self->list_users, from);
@@ -526,6 +523,126 @@ static void got_message (MainWindow *self)
 	main_window_play_new_message (self);
 
 	return;
+}
+
+static char *_rsa_decrypt (const char *private_key, const char *p)
+{
+        unsigned char to[256];
+
+        FILE *fp = fopen (private_key, "rb");
+        if (!fp) {
+		g_print ("not open\n");
+                return NULL;
+        }
+
+        int padding = RSA_PKCS1_PADDING;
+
+        RSA *rsa = PEM_read_RSAPrivateKey (fp, NULL, NULL, NULL);
+        int ll = 0;
+        unsigned char *hex = convert_data_to_hex (p, &ll);
+
+        long int encrypted_length = RSA_private_decrypt (ll, (const unsigned char *) hex, to, rsa, padding);
+        free (hex);
+
+        RSA_free (rsa);
+        fclose (fp);
+	char *cc = calloc (strlen (to) + 1, 1);
+	strncpy (cc, to, strlen (to));
+
+        return cc;//to_print_hex (to, encrypted_length);
+}
+
+static void getting_file (MainWindow *self)
+{
+	json_reader_read_member (self->reader, "from");
+	JsonNode *jfrom = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "filename");
+	JsonNode *jname = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "ckey");
+	JsonNode *jckey = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "ivec");
+	JsonNode *jivec = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "data");
+	JsonNode *jdata = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "pos");
+	JsonNode *jpos = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "size");
+	JsonNode *jsize = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	const char *from = json_node_get_string (jfrom);
+	const char *filename = json_node_get_string (jname);
+	const char *eckey = json_node_get_string (jckey);
+	const char *eivec = json_node_get_string (jivec);
+	const char *data = json_node_get_string (jdata);
+	size_t pos = json_node_get_int (jpos);
+
+        unsigned char indata[AES_BLOCK_SIZE];
+        unsigned char outdata[AES_BLOCK_SIZE];
+
+	char private_key[256];
+	snprintf (private_key, 256, "%s/%s/key.pem", root_app, from);
+
+	char *file_path[256];
+	snprintf (file_path, "%s", download_app);
+	if (access (file_path, F_OK)) {
+		mkdir (file_path, 0755);
+	}
+	snprintf (file_path, "%s/%s", download_app, from);
+	if (access (file_path, F_OK)) {
+		mkdir (file_path, 0755);
+	}
+	snprintf (file_path, "%s/%s", download_app, from, filename);
+	if (access (file_path, F_OK)) {
+		mkdir (file_path, 0755);
+	}
+
+        char *ckey = _rsa_decrypt (private_key, eckey);
+        char *ivec = _rsa_decrypt (private_key, eivec);
+
+        AES_KEY key;
+        AES_set_encrypt_key (ckey, 128, &key);
+
+	size_t length;
+	unsigned char *hex = convert_data_to_hex (data, &length);
+	unsigned char *s = hex;
+	int num = 0;
+	FILE *afp;
+	if (pos == 0) {
+		afp = fopen (file_path, "w");
+	} else {
+		afp = fopen (file_path, "a");
+	}
+	int size = AES_BLOCK_SIZE;
+	if ((length - AES_BLOCK_SIZE) < 0) {
+		size = length;
+	}
+
+        AES_cfb128_encrypt (hex, outdata, size, &key, ivec, &num, AES_DECRYPT);
+        if ((length - AES_BLOCK_SIZE) < AES_BLOCK_SIZE)
+        {
+		fprintf (afp, "%s", outdata);
+		goto end;
+	}     
+	fprintf (afp, "%s", outdata);
+
+end:
+	free (hex);
+	fclose (afp);
+	free (ckey);
+	free (ivec);
 }
 
 static void receive_handler_cb (GObject *source_object,
@@ -564,6 +681,11 @@ static void receive_handler_cb (GObject *source_object,
   if (!strncmp (type, "storage_files", 14)) {
 	  self->reader = reader;
 	  fill_file_storage (self);
+	  goto end;
+  }
+  if (!strncmp (type, "getting_file", 13)) {
+	  self->reader = reader;
+	  getting_file (self);
 	  goto end;
   }
 

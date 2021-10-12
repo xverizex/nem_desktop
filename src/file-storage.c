@@ -20,6 +20,7 @@
 #include "file-storage.h"
 #include <openssl/ssl.h>
 #include <openssl/aes.h>
+#include <json-glib/json-glib.h>
 
 struct _FileStorage {
 	GtkFrame parent_instance;
@@ -27,14 +28,19 @@ struct _FileStorage {
 	GdkDisplay *display;
 	GtkCssProvider *provider;
 
+	GtkWidget *vbox;
 	GtkWidget *box;
 	GtkWidget *button_download;
 	GtkWidget *label_filename;
+	GtkWidget *progress;
 	char *filename;
 	char *data;
 	char *private_key;
 	char *ckey;
 	char *ivec;
+	char *from;
+	double fraction;
+	GOutputStream *ogio;
 };
 
 G_DEFINE_TYPE (FileStorage, file_storage, GTK_TYPE_FRAME)
@@ -45,6 +51,9 @@ typedef enum {
 	PROP_PRIVATE_KEY,
 	PROP_CKEY,
 	PROP_IVEC,
+	PROP_FROM,
+	PROP_OGIO,
+//	PROP_PROGRESS,
 	N_PROPERTIES
 } FileStorageProperty;
 
@@ -85,6 +94,19 @@ static void file_storage_set_property (GObject *object,
 			if (self->ivec) g_free (self->ivec);
 			self->ivec = g_value_dup_string (value);
 			break;
+		case PROP_FROM:
+			if (self->from) g_free (self->from);
+			self->from = g_value_dup_string (value);
+			break;
+		case PROP_OGIO:
+			self->ogio = g_value_get_object (value);
+			break;
+#if 0
+		case PROP_PROGRESS:
+			self->fraction = g_value_get_double (value);
+			gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (self->progress), self->fraction);
+			break;
+#endif
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
 			break;
@@ -158,119 +180,55 @@ static void file_storage_class_init (FileStorageClass *klass)
 			NULL,
 			G_PARAM_WRITABLE
 			);
+	obj_properties[PROP_FROM] = g_param_spec_string (
+			"from",
+			"from",
+			"from",
+			NULL,
+			G_PARAM_WRITABLE
+			);
+	obj_properties[PROP_OGIO] = g_param_spec_object (
+			"ogio",
+			"ogio",
+			"ogio",
+			G_TYPE_OBJECT,
+			G_PARAM_WRITABLE
+			);
 
 	g_object_class_install_properties (object_class, N_PROPERTIES, obj_properties);
 }	
-
-static unsigned char get_hex (char d, int cq)
-{
-        switch (d) {
-                case '0'...'9':
-                        return (d - 48) * cq;
-                case 'a'...'f':
-                        return (d - 97 + 10) * cq;
-                default:
-                        return 0;
-        }
-}
-
-static unsigned char *convert_data_to_hex (const char *data, size_t *ll)
-{
-        *ll = 0;
-        int len = strlen (data);
-        unsigned char *dt = calloc (len + 1, 1);
-
-        unsigned char *d = dt;
-        for (int i = 0; i < len; i += 2) {
-                *d = get_hex (data[i + 0], 16) + get_hex (data[i + 1], 1);
-                d++;
-                (*ll)++;
-        }
-
-        return dt;
-}
-
-static char *to_print_hex (unsigned char *data, const long int length)
-{
-        char *buf = calloc (length * 2 + 1, 1);
-        if (!buf) {
-		g_print ("no calloc line: %s\n", __LINE__);
-                return NULL;
-        }
-        int n = 0;
-        char *s = buf;
-        for (int i = 0; i < length; i++) {
-                sprintf (s, "%02x%n", data[i], &n);
-                s += n;
-        }
-
-        return buf;
-}
-
-static char *_rsa_decrypt (const char *private_key, const char *p)
-{
-        unsigned char to[256];
-
-        FILE *fp = fopen (private_key, "rb");
-        if (!fp) {
-		g_print ("not open\n");
-                return NULL;
-        }
-
-        int padding = RSA_PKCS1_PADDING;
-
-        RSA *rsa = PEM_read_RSAPrivateKey (fp, NULL, NULL, NULL);
-        int ll = 0;
-        unsigned char *hex = convert_data_to_hex (p, &ll);
-
-        long int encrypted_length = RSA_private_decrypt (ll, (const unsigned char *) hex, to, rsa, padding);
-        free (hex);
-
-        RSA_free (rsa);
-        fclose (fp);
-	char *cc = calloc (strlen (to) + 1, 1);
-	strncpy (cc, to, strlen (to));
-
-        return cc;//to_print_hex (to, encrypted_length);
-}
 
 static void button_download_clicked_cb (GtkButton *button, gpointer user_data)
 {
 	FileStorage *self = FILE_STORAGE (user_data);
 
-        unsigned char indata[AES_BLOCK_SIZE];
-        unsigned char outdata[AES_BLOCK_SIZE];
+	JsonBuilder *builder = json_builder_new ();
+	json_builder_begin_object (builder);
+	json_builder_set_member_name (builder, "type");
+	json_builder_add_string_value (builder, "get_file");
+	json_builder_set_member_name (builder, "from");
+	json_builder_add_string_value (builder, self->from);
+	json_builder_set_member_name (builder, "filename");
+	json_builder_add_string_value (builder, self->filename);
+	json_builder_end_object (builder);
 
-        char *ckey = _rsa_decrypt (self->private_key, self->ckey);
-        char *ivec = _rsa_decrypt (self->private_key, self->ivec);
+	JsonNode *node = json_builder_get_root (builder);
+	JsonGenerator *gen = json_generator_new ();
+	json_generator_set_root (gen, node);
+	gsize length = 0;
+	char *data = json_generator_to_data (gen, &length);
 
-        AES_KEY key;
-        AES_set_encrypt_key (ckey, 128, &key);
+	g_output_stream_write (G_OUTPUT_STREAM (self->ogio),
+			data,
+			length,
+			NULL,
+			NULL
+			);
 
-	size_t length;
-	unsigned char *hex = convert_data_to_hex (self->data, &length);
-	unsigned char *s = hex;
-	int num = 0;
-	FILE *afp = fopen ("/home/cf/test.pdf", "a");
-	while (1)
-        {
-		int size = AES_BLOCK_SIZE;
-		if ((length - AES_BLOCK_SIZE) < 0) {
-			size = length;
-		}
+	g_object_unref (builder);
+	g_object_unref (gen);
+	g_free (data);
 
-                AES_cfb128_encrypt (s, outdata, size, &key, ivec, &num, AES_DECRYPT);
-                if ((length - AES_BLOCK_SIZE) < AES_BLOCK_SIZE)
-                {
-			fprintf (afp, "%s", outdata);
-                        break;
-                }
-		s += size;
-		fprintf (afp, "%s", outdata);
-        }
-
-	free (hex);
-	fclose (afp);
 }
 
 static void file_storage_init (FileStorage *self)
@@ -283,7 +241,9 @@ static void file_storage_init (FileStorage *self)
 	self->label_filename = gtk_label_new ("");
 	gtk_widget_set_name (self->label_filename, "label_filename");
 
+	self->vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 	self->box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_box_append (GTK_BOX (self->vbox), self->box);
 	self->button_download = gtk_button_new ();
 	GtkWidget *image_download = gtk_image_new_from_resource ("/io/github/xverizex/nem_desktop/download.svg");
 	gtk_button_set_child (GTK_BUTTON (self->button_download), image_download);
@@ -293,7 +253,10 @@ static void file_storage_init (FileStorage *self)
 			"halign", GTK_ALIGN_END,
 			NULL);
 
-	gtk_frame_set_child (GTK_FRAME (self), self->box);
+	gtk_frame_set_child (GTK_FRAME (self), self->vbox);
 	gtk_widget_set_name (self->box, "storage");
 	g_signal_connect (self->button_download, "clicked", G_CALLBACK (button_download_clicked_cb), self);
+
+	self->progress = gtk_progress_bar_new ();
+	gtk_box_append (GTK_BOX (self->vbox), self->progress);
 }

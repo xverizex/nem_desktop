@@ -33,6 +33,7 @@ static GtkWidget *main_window;
 MessageItem *message_item;
 char *root_app;
 char *root_sounds;
+char *download_app;
 
 static void copy_text_cb (GSimpleAction *action,
                           GVariant      *parameter,
@@ -156,6 +157,8 @@ static void get_root_app ()
 
   root_sounds = strdup (root);
 
+  download_app = calloc (256, 1);
+  snprintf (download_app, 256, "%s/.nem/downloads", home);
 
 }
 
