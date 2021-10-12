@@ -596,18 +596,15 @@ static void getting_file (MainWindow *self)
 	snprintf (private_key, 256, "%s/%s/key.pem", root_app, from);
 
 	char *file_path[256];
-	snprintf (file_path, "%s", download_app);
+	snprintf (file_path, 256, "%s", download_app);
 	if (access (file_path, F_OK)) {
 		mkdir (file_path, 0755);
 	}
-	snprintf (file_path, "%s/%s", download_app, from);
+	snprintf (file_path, 256, "%s/%s", download_app, from);
 	if (access (file_path, F_OK)) {
 		mkdir (file_path, 0755);
 	}
-	snprintf (file_path, "%s/%s", download_app, from, filename);
-	if (access (file_path, F_OK)) {
-		mkdir (file_path, 0755);
-	}
+	snprintf (file_path, 256, "%s/%s/%s", download_app, from, filename);
 
         char *ckey = _rsa_decrypt (private_key, eckey);
         char *ivec = _rsa_decrypt (private_key, eivec);
