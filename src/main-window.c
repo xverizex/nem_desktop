@@ -615,9 +615,6 @@ static void getting_file (MainWindow *self)
         char *ckey = _rsa_decrypt (private_key, eckey);
         char *ivec = _rsa_decrypt (private_key, eivec);
 
-	g_print ("ckey: %s\n", ckey);
-	g_print ("ivec: %s\n", ivec);
-
 	size_t length;
 	unsigned char *hex = convert_data_to_hex (data, &length);
 	unsigned char *s = hex;
@@ -640,7 +637,6 @@ static void getting_file (MainWindow *self)
 		EVP_DecryptFinal_ex (ctx, b + len, &len);
 		plaintext_len += len;
 		EVP_CIPHER_CTX_free (ctx);
-		//b[plaintext_len] = 0;
 		fwrite (b, 1, plaintext_len, afp);
 	}
 
