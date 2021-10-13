@@ -443,34 +443,39 @@ static gpointer dtf_send_file (gpointer user_data)
 	struct vp *vp = calloc (1, sizeof (struct vp));
 	vp->progress = dtf->progress;
 	vp->dtf = dtf;
+	unsigned char *cipher = malloc (16 * 200);
+	unsigned char *plain = malloc (16 * 200);
+	int iter = 0;
+	int buf_index = 0;
+	int readed;
+	int len;
+	int cipher_len;
+	EVP_CIPHER_CTX *ctx;
+	ctx = EVP_CIPHER_CTX_new ();
+	EVP_EncryptInit_ex (ctx, EVP_aes_128_cfb128 (), NULL, dtf->ckey, dtf->ivec);
+	dtf->is_start = 0;
 	while (1)
 	{
-		memset (indata, 0, AES_BLOCK_SIZE);
-		memset (outdata, 0, AES_BLOCK_SIZE);
-		int readed  = fread (indata, 1, AES_BLOCK_SIZE, dtf->fp);
-		if (readed <= 0) {
-			break;
-		}
+		int readed = fread (plain, 1, 16 * 80, dtf->fp);
+		if (readed <= 0) break;
+		EVP_EncryptUpdate (ctx, cipher, &len, plain, readed);
+		cipher_len = len;
+		EVP_EncryptFinal_ex (ctx, cipher + len, &len);
+		cipher_len += len;
 
-		AES_cfb128_encrypt (indata, outdata, readed, &dtf->key, dtf->ivec, &num, AES_ENCRYPT);
-		char *encrypted_data = to_print_hex (outdata, AES_BLOCK_SIZE);
-		if (readed < AES_BLOCK_SIZE)
-		{
-			build_and_send_block_data (dtf->name, dtf->filename, encrypted_data, dtf->eckey, dtf->eivec, CONTINUE, dtf->self);
-			free (encrypted_data);
-			vp->fraction = 1.0;
-			g_idle_add (set_fraction, vp);
-			break;
-		} else {
-			build_and_send_block_data (dtf->name, dtf->filename, encrypted_data, dtf->eckey, dtf->eivec, dtf->is_start, dtf->self);
-			free (encrypted_data);
-			vp->fraction = (double) (dtf->pos * 100) / (double) (dtf->size) / (double) (100.0);
-			if (vp->fraction > 1.0) vp->fraction = 1.0;
-			g_idle_add (set_fraction, vp);
-		}
+		char *encrypted_data = to_print_hex (cipher, cipher_len);
+		build_and_send_block_data (dtf->name, dtf->filename, encrypted_data, dtf->eckey, dtf->eivec, dtf->is_start, dtf->self);
+		free (encrypted_data);
+		dtf->pos += readed;
+		vp->fraction = (double) (dtf->pos * 100) / (double) (dtf->size) / (double) (100.0);
+		if (vp->fraction > 1.0) vp->fraction = 1.0;
+		g_idle_add (set_fraction, vp);
 		dtf->is_start = 1;
-		dtf->pos += AES_BLOCK_SIZE;
+
 	}
+	EVP_CIPHER_CTX_free (ctx);
+	free (cipher);
+	free (plain);
 
 	return NULL;
 }

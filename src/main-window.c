@@ -593,6 +593,7 @@ static void getting_file (MainWindow *self)
 	const char *eivec = json_node_get_string (jivec);
 	const char *data = json_node_get_string (jdata);
 	size_t pos = json_node_get_int (jpos);
+	size_t size_buf = json_node_get_int (jsize);
 
         unsigned char indata[AES_BLOCK_SIZE];
         unsigned char outdata[AES_BLOCK_SIZE];
@@ -614,10 +615,8 @@ static void getting_file (MainWindow *self)
         char *ckey = _rsa_decrypt (private_key, eckey);
         char *ivec = _rsa_decrypt (private_key, eivec);
 
-        AES_KEY key;
 	g_print ("ckey: %s\n", ckey);
 	g_print ("ivec: %s\n", ivec);
-        AES_set_encrypt_key (ckey, 128, &key);
 
 	size_t length;
 	unsigned char *hex = convert_data_to_hex (data, &length);
@@ -629,18 +628,22 @@ static void getting_file (MainWindow *self)
 	} else {
 		afp = fopen (file_path, "a");
 	}
-	int size = AES_BLOCK_SIZE;
-	if ((length - AES_BLOCK_SIZE) < 0) {
-		size = length;
+	unsigned char *b = malloc (size_buf + 1);
+	int plaintext_len;
+	{
+		EVP_CIPHER_CTX *ctx;
+		int len;
+		ctx = EVP_CIPHER_CTX_new ();
+		EVP_DecryptInit_ex (ctx, EVP_aes_128_cfb128 (), NULL, ckey, ivec);
+		EVP_DecryptUpdate (ctx, b, &len, hex, length);
+		plaintext_len = len;
+		EVP_DecryptFinal_ex (ctx, b + len, &len);
+		plaintext_len += len;
+		EVP_CIPHER_CTX_free (ctx);
+		//b[plaintext_len] = 0;
+		fwrite (b, 1, plaintext_len, afp);
 	}
 
-        AES_cfb128_encrypt (hex, outdata, size, &key, ivec, &num, AES_DECRYPT);
-        if ((length - AES_BLOCK_SIZE) < AES_BLOCK_SIZE)
-        {
-		fprintf (afp, "%s", outdata);
-		goto end;
-	}     
-	fprintf (afp, "%s", outdata);
 
 end:
 	free (hex);
