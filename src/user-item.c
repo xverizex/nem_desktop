@@ -306,6 +306,12 @@ static void button_path_response_cb (GtkNativeDialog *native,
 static void button_path_clicked_cb (GtkButton *button, gpointer user_data)
 {
 	UserItem *self = USER_ITEM (user_data);
+	self->native = gtk_file_chooser_native_new ("PATH",
+			self->window_add_file,
+			GTK_FILE_CHOOSER_ACTION_OPEN,
+			"Open",
+			"Cancel");
+	g_signal_connect (self->native, "response", G_CALLBACK (button_path_response_cb), self);
 	gtk_native_dialog_show (GTK_NATIVE_DIALOG (self->native));
 }
 
@@ -552,6 +558,13 @@ static void button_upload_clicked_cb (GtkButton *button, gpointer user_data)
 	send_file (filename, name, path_crypto, path, self);
 }
 
+static gboolean window_add_file_close_request (GtkWidget *w,
+		gpointer user_data)
+{
+	gtk_widget_set_visible (w, FALSE);
+	return TRUE;
+}
+
 static void create_window_add_file (UserItem *self) 
 {
 	self->window_add_file = gtk_window_new ();
@@ -559,12 +572,6 @@ static void create_window_add_file (UserItem *self)
 	self->entry_filename = gtk_entry_new ();
 	self->entry_path = gtk_entry_new ();
 	self->button_path = gtk_button_new_with_label ("PATH");
-	self->native = gtk_file_chooser_native_new ("PATH",
-			self->window_add_file,
-			GTK_FILE_CHOOSER_ACTION_OPEN,
-			"Open",
-			"Cancel");
-	g_signal_connect (self->native, "response", G_CALLBACK (button_path_response_cb), self);
 	g_signal_connect (self->button_path, "clicked", G_CALLBACK (button_path_clicked_cb), self);
 	self->button_upload = gtk_button_new_with_label ("UPLOAD");
 	g_signal_connect (self->button_upload, "clicked", G_CALLBACK (button_upload_clicked_cb), self);
@@ -584,6 +591,8 @@ static void create_window_add_file (UserItem *self)
 
 	self->progress = gtk_progress_bar_new ();
 	gtk_box_append (GTK_BOX (self->box_frame_add_file), self->progress);
+
+	g_signal_connect (self->window_add_file, "close-request", G_CALLBACK (window_add_file_close_request), self);
 }
 
 static void button_entry_file_cb (GtkButton *button, gpointer user_data)
