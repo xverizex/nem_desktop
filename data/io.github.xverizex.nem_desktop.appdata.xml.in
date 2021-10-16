@@ -20,6 +20,14 @@
     </screenshot>
 </screenshots>
   <releases>
+    <release date="2021-10-03" version="0.1.38">
+      <description>
+        <p>stable release</p>
+        <ul>
+          <li>increased max buffer for send and read files.</li>
+        </ul>
+      </description>
+    </release>
     <release date="2021-10-03" version="0.1.36">
       <description>
         <p>stable release</p>
