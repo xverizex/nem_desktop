@@ -449,8 +449,8 @@ static gpointer dtf_send_file (gpointer user_data)
 	struct vp *vp = calloc (1, sizeof (struct vp));
 	vp->progress = dtf->progress;
 	vp->dtf = dtf;
-	unsigned char *cipher = malloc (16 * 80);
-	unsigned char *plain = malloc (16 * 80);
+	unsigned char *cipher = malloc (16 * 450);
+	unsigned char *plain = malloc (16 * 450);
 	int iter = 0;
 	int buf_index = 0;
 	int readed;
@@ -462,7 +462,7 @@ static gpointer dtf_send_file (gpointer user_data)
 	while (1)
 	{
 		EVP_EncryptInit_ex (ctx, EVP_aes_128_cfb128 (), NULL, dtf->ckey, dtf->ivec);
-		int readed = fread (plain, 1, 16 * 80, dtf->fp);
+		int readed = fread (plain, 1, 16 * 450, dtf->fp);
 		if (readed <= 0) break;
 		EVP_EncryptUpdate (ctx, cipher, &len, plain, readed);
 		cipher_len = len;
