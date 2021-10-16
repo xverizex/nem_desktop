@@ -543,11 +543,15 @@ static char *_rsa_decrypt (const char *private_key, const char *p)
 	for (int i = 0; i < ll; i++) {
 //		g_print ("%02x", hex[i]);
 	}
-	g_print ("\n");
+//	g_print ("\n");
 
         long int encrypted_length = RSA_private_decrypt (ll, (const unsigned char *) hex, to, rsa, padding);
-	g_print ("rsa decrypt: %d\n", encrypted_length);
         free (hex);
+	if (encrypted_length == -1) {
+        	RSA_free (rsa);
+        	fclose (fp);
+		return NULL;
+	}
 
         RSA_free (rsa);
         fclose (fp);
@@ -637,7 +641,7 @@ static void getting_file (MainWindow *self)
 		EVP_DecryptFinal_ex (ctx, b + len, &len);
 		plaintext_len += len;
 		EVP_CIPHER_CTX_free (ctx);
-		fwrite (b, 1, plaintext_len, afp);
+		int ret = fwrite (b, 1, plaintext_len, afp);
 	}
 
 

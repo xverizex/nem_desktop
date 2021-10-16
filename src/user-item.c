@@ -463,7 +463,10 @@ static gpointer dtf_send_file (gpointer user_data)
 	{
 		EVP_EncryptInit_ex (ctx, EVP_aes_128_cfb128 (), NULL, dtf->ckey, dtf->ivec);
 		int readed = fread (plain, 1, 16 * 450, dtf->fp);
-		if (readed <= 0) break;
+		if (readed <= 0) {
+			g_print ("readed is error\n");
+			break;
+		}
 		EVP_EncryptUpdate (ctx, cipher, &len, plain, readed);
 		cipher_len = len;
 		EVP_EncryptFinal_ex (ctx, cipher + len, &len);
