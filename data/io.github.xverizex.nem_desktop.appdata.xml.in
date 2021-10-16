@@ -20,6 +20,14 @@
     </screenshot>
 </screenshots>
   <releases>
+    <release date="2021-10-03" version="0.1.40">
+      <description>
+        <p>stable release</p>
+        <ul>
+          <li>fix size of getting files.</li>
+        </ul>
+      </description>
+    </release>
     <release date="2021-10-03" version="0.1.38">
       <description>
         <p>stable release</p>
