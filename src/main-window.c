@@ -65,6 +65,7 @@ struct _MainWindow {
 	GtkWidget *image_storage;
 	GtkWidget *storage_window;
 	GtkWidget *list_box_storage;
+	GtkWidget *scroll_list_box;
 	GMenu *menu;
 
 	GIOStream *gio;
@@ -1089,9 +1090,14 @@ static gboolean storage_window_close_request_cb (GtkWindow *window,
 
 static void create_storage_window (MainWindow *self)
 {
-	self->storage_window = gtk_window_new ();
+	self->storage_window = g_object_new (GTK_TYPE_WINDOW,
+			"default-width", 300,
+			"default-height", 600,
+			NULL);
+	self->scroll_list_box = gtk_scrolled_window_new ();
 	self->list_box_storage = gtk_list_box_new ();
-	gtk_window_set_child (GTK_WINDOW (self->storage_window), self->list_box_storage);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (self->scroll_list_box), self->list_box_storage);
+	gtk_window_set_child (GTK_WINDOW (self->storage_window), self->scroll_list_box);
 	gtk_widget_set_name (self->list_box_storage, "list_files");
 
 	g_signal_connect (self->storage_window, "close-request", G_CALLBACK (storage_window_close_request_cb), self);
