@@ -39,10 +39,30 @@ extern char *root_app;
 extern char *root_sounds;
 extern char *download_app;
 
+struct _gd {
+	char *from;
+	char *filename;
+	char *eckey;
+	char *eivec;
+	char *data;
+	size_t pos;
+	size_t size_buf;
+	int filled;
+	int index;
+	struct _gd *next;
+};
+struct gd {
+	struct _gd *start;
+};
+
 struct _MainWindow {
 	GtkWindow parent_instance;
 
+	GMutex mutex;
+
 	GtkApplication *app;
+	struct gd *gd;
+	GThread *get_file;
 
 	GdkDisplay *display;
 	GtkCssProvider *provider;
@@ -73,8 +93,10 @@ struct _MainWindow {
 	GOutputStream *ogio;
 	char *buf;
 
-  JsonReader *reader;
+	JsonReader *reader;
 	GstElement *new_message;
+
+	int index_storage;
 
 };
 
@@ -154,6 +176,7 @@ static void fill_file_storage (MainWindow *self)
 				"ckey", ckey,
 				"ivec", ivec,
 				"ogio", self->ogio,
+				"index", self->index_storage++,
 				NULL);
 		gtk_list_box_append (GTK_LIST_BOX (self->list_box_storage), item);
 	}
@@ -592,6 +615,10 @@ static void getting_file (MainWindow *self)
 	JsonNode *jsize = json_reader_get_value (self->reader);
 	json_reader_end_member (self->reader);
 
+	json_reader_read_member (self->reader, "index");
+	JsonNode *jindex = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
 	const char *from = json_node_get_string (jfrom);
 	const char *filename = json_node_get_string (jname);
 	const char *eckey = json_node_get_string (jckey);
@@ -599,58 +626,30 @@ static void getting_file (MainWindow *self)
 	const char *data = json_node_get_string (jdata);
 	size_t pos = json_node_get_int (jpos);
 	size_t size_buf = json_node_get_int (jsize);
+	int index = json_node_get_int (jindex);
 
-        unsigned char indata[AES_BLOCK_SIZE];
-        unsigned char outdata[AES_BLOCK_SIZE];
-
-	char private_key[256];
-	snprintf (private_key, 256, "%s/%s/key.pem", root_app, from);
-
-	char *file_path[256];
-	snprintf (file_path, 256, "%s", download_app);
-	if (access (file_path, F_OK)) {
-		mkdir (file_path, 0755);
-	}
-	snprintf (file_path, 256, "%s/%s", download_app, from);
-	if (access (file_path, F_OK)) {
-		mkdir (file_path, 0755);
-	}
-	snprintf (file_path, 256, "%s/%s/%s", download_app, from, filename);
-
-        char *ckey = _rsa_decrypt (private_key, eckey);
-        char *ivec = _rsa_decrypt (private_key, eivec);
-
-	size_t length;
-	unsigned char *hex = convert_data_to_hex (data, &length);
-	unsigned char *s = hex;
-	int num = 0;
-	FILE *afp;
-	if (pos == 0) {
-		afp = fopen (file_path, "w");
+	struct _gd *gd = calloc (1, sizeof (struct _gd));
+	gd->from = strdup (from);
+	gd->filename = strdup (filename);
+	gd->eckey = strdup (eckey);
+	gd->eivec = strdup (eivec);
+	gd->data = strdup (data);
+	gd->pos = pos;
+	gd->size_buf = size_buf;
+	gd->index = index;
+	gd->filled = 1;
+	g_mutex_lock (&self->mutex);
+	if (self->gd->start == NULL) {
+		self->gd->start = gd;
 	} else {
-		afp = fopen (file_path, "a");
+		struct _gd *g = self->gd->start;
+		while (g->next) {
+			g = g->next;
+		}
+		g->next = gd;
 	}
-	unsigned char *b = malloc (size_buf + 1);
-	int plaintext_len;
-	{
-		EVP_CIPHER_CTX *ctx;
-		int len;
-		ctx = EVP_CIPHER_CTX_new ();
-		EVP_DecryptInit_ex (ctx, EVP_aes_128_cfb128 (), NULL, ckey, ivec);
-		EVP_DecryptUpdate (ctx, b, &len, hex, length);
-		plaintext_len = len;
-		EVP_DecryptFinal_ex (ctx, b + len, &len);
-		plaintext_len += len;
-		EVP_CIPHER_CTX_free (ctx);
-		int ret = fwrite (b, 1, plaintext_len, afp);
-	}
+	g_mutex_unlock (&self->mutex);
 
-
-end:
-	free (hex);
-	fclose (afp);
-	free (ckey);
-	free (ivec);
 }
 
 static void receive_handler_cb (GObject *source_object,
@@ -1156,12 +1155,125 @@ static void storage_button_clicked_cb (GtkButton *button, gpointer user_data)
 			break;
 		}
 	}
+	self->index_storage = 0;
 
 	get_list_storage_files (self, name);
 }
 
+struct xi {
+	double progress;
+	int index;
+	MainWindow *self;
+};
+
+static gboolean set_progress_idle (gpointer user_data)
+{
+	struct xi *xi = (struct xi *) user_data;
+	MainWindow *self = xi->self;
+	GtkListBoxRow *r = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->list_box_storage), xi->index);
+	GtkWidget *child = gtk_list_box_row_get_child (r);
+	g_object_set (child,
+			"progress", xi->progress,
+			NULL);
+	free (xi);
+
+	return G_SOURCE_REMOVE;
+}
+
+static gpointer thread_get_file (gpointer user_data)
+{
+	MainWindow *self = MAIN_WINDOW (user_data);
+
+	while (1)
+	{
+		if (self->gd->start == NULL) {
+			g_usleep (1000);
+			continue;
+		}
+
+		const char *from = self->gd->start->from;
+		const char *filename = self->gd->start->filename;
+		const char *eckey = self->gd->start->eckey;
+		const char *eivec = self->gd->start->eivec;
+		const char *data = self->gd->start->data;
+		int index = self->gd->start->index;
+		size_t pos = self->gd->start->pos;
+		size_t size_buf = self->gd->start->size_buf;
+
+
+		char private_key[256];
+		snprintf (private_key, 256, "%s/%s/key.pem", root_app, from);
+
+		char *file_path[256];
+		snprintf (file_path, 256, "%s", download_app);
+		if (access (file_path, F_OK)) {
+			mkdir (file_path, 0755);
+		}
+		snprintf (file_path, 256, "%s/%s", download_app, from);
+		if (access (file_path, F_OK)) {
+			mkdir (file_path, 0755);
+		}
+		snprintf (file_path, 256, "%s/%s/%s", download_app, from, filename);
+
+		char *ckey = _rsa_decrypt (private_key, eckey);
+		char *ivec = _rsa_decrypt (private_key, eivec);
+
+		size_t length;
+		unsigned char *hex = convert_data_to_hex (data, &length);
+		unsigned char *s = hex;
+		int num = 0;
+		FILE *afp;
+		if (pos == 0) {
+			afp = fopen (file_path, "w");
+		} else {
+			afp = fopen (file_path, "a");
+		}
+		unsigned char *b = malloc (size_buf + 1);
+		int plaintext_len;
+		EVP_CIPHER_CTX *ctx;
+		int len;
+		ctx = EVP_CIPHER_CTX_new ();
+		EVP_DecryptInit_ex (ctx, EVP_aes_128_cfb128 (), NULL, ckey, ivec);
+		EVP_DecryptUpdate (ctx, b, &len, hex, length);
+		plaintext_len = len;
+		EVP_DecryptFinal_ex (ctx, b + len, &len);
+		plaintext_len += len;
+		EVP_CIPHER_CTX_free (ctx);
+		int ret = fwrite (b, 1, plaintext_len, afp);
+end:
+		free (hex);
+		fclose (afp);
+		free (ckey);
+		free (ivec);
+
+		g_mutex_lock (&self->mutex);
+
+		struct _gd *g = self->gd->start;
+		self->gd->start = self->gd->start->next;
+
+		g_mutex_unlock (&self->mutex);
+
+		g_free (g->from);
+		g_free (g->filename);
+		g_free (g->eckey);
+		g_free (g->eivec);
+		g_free (g->data);
+		g_free (g);
+
+		struct xi *xi = calloc (1, sizeof (struct xi));
+		xi->progress = 1.0;//(double) (pos * 100) / (double) (size) / (double) (100.0);
+		xi->self = self;
+		xi->index = index;
+
+		g_idle_add (set_progress_idle, xi);
+	}
+}
+
 static void main_window_init (MainWindow *self)
 {
+	self->gd = calloc (1, sizeof (struct gd));
+	g_mutex_init (&self->mutex);
+	self->get_file = g_thread_new ("get_file", thread_get_file, self);
 	create_storage_window (self);
   GFile *ff = g_file_new_for_uri ("resource:///io/github/xverizex/nem_desktop/in_message.mp3");
 
@@ -1315,12 +1427,4 @@ static void main_window_init (MainWindow *self)
 	gtk_header_bar_pack_end (GTK_HEADER_BAR (self->header_bar), self->handshake_button);
 	gtk_header_bar_pack_end (GTK_HEADER_BAR (self->header_bar), self->storage_button);
 
-#if 0
-	for (int i = 0; i < 3; i++) {
-		GtkWidget *item = user_item_new ();
-		gtk_list_box_append (GTK_LIST_BOX (self->list_users), item);
-	}
-
-	gtk_list_box_unselect_all (GTK_LIST_BOX (self->list_users));
-#endif
 }

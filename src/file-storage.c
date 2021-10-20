@@ -41,6 +41,7 @@ struct _FileStorage {
 	char *from;
 	double fraction;
 	GOutputStream *ogio;
+	int index;
 };
 
 G_DEFINE_TYPE (FileStorage, file_storage, GTK_TYPE_FRAME)
@@ -53,7 +54,8 @@ typedef enum {
 	PROP_IVEC,
 	PROP_FROM,
 	PROP_OGIO,
-//	PROP_PROGRESS,
+	PROP_PROGRESS,
+	PROP_INDEX,
 	N_PROPERTIES
 } FileStorageProperty;
 
@@ -101,12 +103,14 @@ static void file_storage_set_property (GObject *object,
 		case PROP_OGIO:
 			self->ogio = g_value_get_object (value);
 			break;
-#if 0
 		case PROP_PROGRESS:
 			self->fraction = g_value_get_double (value);
-			gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (self->progress), self->fraction);
+			//gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (self->progress), self->fraction);
+			gtk_progress_bar_pulse (GTK_PROGRESS_BAR (self->progress));
 			break;
-#endif
+		case PROP_INDEX:
+			self->index = g_value_get_int (value);
+			break;
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
 			break;
@@ -194,6 +198,24 @@ static void file_storage_class_init (FileStorageClass *klass)
 			G_TYPE_OBJECT,
 			G_PARAM_WRITABLE
 			);
+	obj_properties[PROP_PROGRESS] = g_param_spec_double (
+			"progress",
+			"progress",
+			"progress",
+			0.0,
+			1.0,
+			0.0,
+			G_PARAM_WRITABLE
+			);
+	obj_properties[PROP_INDEX] = g_param_spec_int (
+			"index",
+			"index",
+			"index",
+			0,
+			16000,
+			0,
+			G_PARAM_WRITABLE
+			);
 
 	g_object_class_install_properties (object_class, N_PROPERTIES, obj_properties);
 }	
@@ -210,6 +232,8 @@ static void button_download_clicked_cb (GtkButton *button, gpointer user_data)
 	json_builder_add_string_value (builder, self->from);
 	json_builder_set_member_name (builder, "filename");
 	json_builder_add_string_value (builder, self->filename);
+	json_builder_set_member_name (builder, "index");
+	json_builder_add_int_value (builder, self->index);
 	json_builder_end_object (builder);
 
 	JsonNode *node = json_builder_get_root (builder);
