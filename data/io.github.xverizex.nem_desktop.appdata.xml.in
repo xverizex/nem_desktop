@@ -20,6 +20,14 @@
     </screenshot>
 </screenshots>
   <releases>
+    <release date="2021-10-21" version="0.1.46">
+      <description>
+        <p>stable release</p>
+        <ul>
+          <li>fix handshake keys.</li>
+        </ul>
+      </description>
+    </release>
     <release date="2021-10-21" version="0.1.44">
       <description>
         <p>stable release</p>
