@@ -330,6 +330,7 @@ static void handshake_key_save (MainWindow *self)
 
 	char path[256];
 	snprintf (path, 256, "%s/%s/crypto.pem", root_app, from);
+	remove (path);
 	GFile *file = g_file_new_for_path (path);
 	if (!file) {
 		free (key);
