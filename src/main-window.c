@@ -97,6 +97,7 @@ struct _MainWindow {
 	GstElement *new_message;
 
 	int index_storage;
+	GThread *thread_receive;
 
 };
 
@@ -135,6 +136,42 @@ static void user_item_row_selected_cb (GtkListBox *box,
 	user_item_set_chat (USER_ITEM (child));
 }
 
+struct _file_storage {
+	char *from;
+	char *filename;
+	MainWindow *self;
+};
+
+static gboolean idle_fill_file_storage (gpointer user_data)
+{
+	struct _file_storage *fs = (struct _file_storage *) user_data;
+
+	GtkListBoxRow *row_sel_child = gtk_list_box_get_selected_row (GTK_LIST_BOX (fs->self->list_users));
+	GtkWidget *sel_child = gtk_list_box_row_get_child (row_sel_child);
+	char *name_from = NULL;
+	g_object_get (sel_child,
+			"name", &name_from,
+			NULL);
+
+	if (!strncmp (name_from, fs->from, strlen (fs->from) + 1))
+	{
+		char path[255];
+		snprintf (path, 255, "%s/%s/crypto.pem", root_app, fs->from );
+		GtkWidget *item = g_object_new (FILE_TYPE_STORAGE,
+				"filename", fs->filename,
+				"from", fs->from,
+				"key", path,
+				"ogio", fs->self->ogio,
+				"index", fs->self->index_storage++,
+				NULL);
+		gtk_list_box_append (GTK_LIST_BOX (fs->self->list_box_storage), item);
+	}
+	free (fs->from);
+	free (fs->filename);
+	free (fs);
+
+	return G_SOURCE_REMOVE;
+}
 static void fill_file_storage (MainWindow *self)
 {
 	json_reader_read_member (self->reader, "from");
@@ -145,141 +182,153 @@ static void fill_file_storage (MainWindow *self)
 	JsonNode *jname = json_reader_get_value (self->reader);
 	json_reader_end_member (self->reader);
 
-	json_reader_read_member (self->reader, "ckey");
-	JsonNode *jckey = json_reader_get_value (self->reader);
-	json_reader_end_member (self->reader);
-
-	json_reader_read_member (self->reader, "ivec");
-	JsonNode *jivec = json_reader_get_value (self->reader);
-	json_reader_end_member (self->reader);
-
 	const char *from = json_node_get_string (jfrom);
 	const char *filename = json_node_get_string (jname);
-	const char *ckey = json_node_get_string (jckey);
-	const char *ivec = json_node_get_string (jivec);
 
-	GtkListBoxRow *row_sel_child = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->list_users));
-	GtkWidget *sel_child = gtk_list_box_row_get_child (row_sel_child);
-	char *name_from = NULL;
-	g_object_get (sel_child,
-			"name", &name_from,
+	struct _file_storage *fs = calloc (1, sizeof (struct _file_storage));
+	fs->from = strdup (from);
+	fs->filename = strdup (filename);
+	fs->self = self;
+	g_idle_add (idle_fill_file_storage, fs);
+
+}
+
+struct _fill_arrays {
+	MainWindow *self;
+	char *name;
+	int status;
+	int is_end;
+};
+
+static gboolean idle_fill_arrays (gpointer user_data)
+{
+	struct _fill_arrays *fs = (struct _fill_arrays *) user_data;
+
+	GtkWidget *user_item = g_object_new (USER_TYPE_ITEM, 
+			"handbutton", fs->self->handshake_button, 
+			"name", fs->name, 
+			"status", fs->status, 
+			"blink", 0, 
+			"frame_chat", fs->self->frame_chat, 
+			"app", fs->self->app, 
+			"notification", fs->self->notification, 
+			"ogio", fs->self->ogio, 
+			"main_window", fs->self, 
 			NULL);
 
-	if (!strncmp (name_from, from, strlen (from) + 1))
-	{
-		char path[255];
-		snprintf (path, 255, "%s/%s/crypto.pem", root_app, from );
-		GtkWidget *item = g_object_new (FILE_TYPE_STORAGE,
-				"filename", filename,
-				"from", from,
-				"key", path,
-				"ckey", ckey,
-				"ivec", ivec,
-				"ogio", self->ogio,
-				"index", self->index_storage++,
-				NULL);
-		gtk_list_box_append (GTK_LIST_BOX (self->list_box_storage), item);
-	}
+	gtk_list_box_append (GTK_LIST_BOX (fs->self->list_users), user_item);
+
+	if (fs->is_end)
+		gtk_list_box_invalidate_sort (GTK_LIST_BOX (fs->self->list_users));
+
+	free (fs->name);
+	free (fs);
+
+	return G_SOURCE_REMOVE;
 }
 
 static void fill_arrays (MainWindow *self)
 {
 
 
-  json_reader_is_object (self->reader);
+	json_reader_is_object (self->reader);
 
+	int count = json_reader_count_members (self->reader);
 
-  int count = json_reader_count_members (self->reader);
-
-  json_reader_read_member (self->reader, "users");
-  size_t length = json_reader_count_elements (self->reader);
+	json_reader_read_member (self->reader, "users");
+	size_t length = json_reader_count_elements (self->reader);
 
 	for (size_t i = 0; i < length; i++) {
 		json_reader_read_element (self->reader, i);
 
-    json_reader_read_member (self->reader, "name");
-    JsonNode *jname = json_reader_get_value (self->reader);
-    json_reader_end_member (self->reader);
-    const char *name = json_node_get_string (jname);
+		json_reader_read_member (self->reader, "name");
+		JsonNode *jname = json_reader_get_value (self->reader);
+		json_reader_end_member (self->reader);
+		const char *name = json_node_get_string (jname);
 
 		json_reader_read_member (self->reader, "status");
-    int status = json_reader_get_int_value (self->reader);
-    json_reader_end_member (self->reader);
+		int status = json_reader_get_int_value (self->reader);
+		json_reader_end_member (self->reader);
+		struct _fill_arrays *fs = calloc (1, sizeof (struct _fill_arrays));
+		fs->self = self;
+		fs->name = strdup (name);
+		fs->status = status;
+		fs->is_end = i + 1 == length ? 1 : 0;
+		g_idle_add (idle_fill_arrays, fs);
 
+		json_reader_end_element (self->reader);
+	}
+	json_reader_end_member (self->reader);
+}
 
-    GtkWidget *user_item = g_object_new (USER_TYPE_ITEM,
-                                         "handbutton", self->handshake_button,
-                                         "name", name,
-                                         "status", status,
-                                         "blink", 0,
-                                         "frame_chat", self->frame_chat,
-                                         "app", self->app,
-                                         "notification", self->notification,
-                                         "ogio", self->ogio,
-                                         "main_window", self,
-                                         NULL);
+struct _fill_arrays_new_status {
+	int status;
+	char *name;
+	MainWindow *self;
+};
 
+static gboolean idle_fill_arrays_new_status (gpointer user_data)
+{
+	struct _fill_arrays_new_status *fs = (struct _fill_arrays_new_status *) user_data;
 
-		gtk_list_box_append (GTK_LIST_BOX (self->list_users), user_item);
-    json_reader_end_element (self->reader);
-  }
-  json_reader_end_member (self->reader);
+	for (int i = 0; 1; i++) {
+		GtkListBoxRow *row = gtk_list_box_get_row_at_index (
+				GTK_LIST_BOX (fs->self->list_users),
+				i);
+		if (row == NULL) break;
 
-	gtk_list_box_invalidate_sort (GTK_LIST_BOX (self->list_users));
+		GtkWidget *item = gtk_list_box_row_get_child (row);
+		const char *n = user_item_get_name (USER_ITEM (item));
+		if (!strncmp (n, fs->name, strlen (fs->name) + 1)) {
+			user_item_set_status (USER_ITEM (item), fs->status);
 
+			gtk_list_box_invalidate_sort (GTK_LIST_BOX (fs->self->list_users));
+			goto end;
+		}
+	}
 
+	GtkWidget *user_item = user_item_new ();
+
+	g_object_set (user_item,
+                "name", fs->name,
+                "handbutton", fs->self->handshake_button,
+                "status", fs->status,
+                "blink", 0,
+                "frame_chat", fs->self->frame_chat,
+                "app", fs->self->app,
+                "notification", fs->self->notification,
+                "ogio", fs->self->ogio,
+                "main_window", fs->self,
+                NULL);
+
+	gtk_list_box_append (GTK_LIST_BOX (fs->self->list_users), user_item);
+	gtk_list_box_invalidate_sort (GTK_LIST_BOX (fs->self->list_users));
+
+end:
+	free (fs->name);
+	free (fs);
+
+	return G_SOURCE_REMOVE;
 }
 
 static void fill_arrays_new_status (MainWindow *self)
 {
 
 	json_reader_read_member (self->reader, "status");
-  int status = json_reader_get_int_value (self->reader);
-  json_reader_end_member (self->reader);
+	int status = json_reader_get_int_value (self->reader);
+	json_reader_end_member (self->reader);
 
-  json_reader_read_member (self->reader, "name");
-  JsonNode *jname = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
+	json_reader_read_member (self->reader, "name");
+	JsonNode *jname = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
 
-  const char *name = json_node_get_string (jname);
+	const char *name = json_node_get_string (jname);
 
-
-	for (int i = 0; 1; i++) {
-		GtkListBoxRow *row = gtk_list_box_get_row_at_index (
-				GTK_LIST_BOX (self->list_users),
-				i);
-		if (row == NULL) break;
-
-		GtkWidget *item = gtk_list_box_row_get_child (row);
-		const char *n = user_item_get_name (USER_ITEM (item));
-		if (!strncmp (n, name, strlen (name) + 1)) {
-			user_item_set_status (USER_ITEM (item), status);
-      json_reader_end_member (self->reader);
-
-			gtk_list_box_invalidate_sort (GTK_LIST_BOX (self->list_users));
-
-			return;
-		}
-	}
-
-  GtkWidget *user_item = user_item_new ();
-
-	g_object_set (user_item,
-                "name", name,
-                "handbutton", self->handshake_button,
-                "status", status,
-                "blink", 0,
-                "frame_chat", self->frame_chat,
-                "app", self->app,
-                "notification", self->notification,
-                "ogio", self->ogio,
-                "main_window", self,
-                NULL);
-
-	gtk_list_box_append (GTK_LIST_BOX (self->list_users), user_item);
-	gtk_list_box_invalidate_sort (GTK_LIST_BOX (self->list_users));
-
-  return;
+	struct _fill_arrays_new_status *fs = calloc (1, sizeof (struct _fill_arrays_new_status));
+	fs->status = status;
+	fs->name = strdup (name);
+	fs->self = self;
+	g_idle_add (idle_fill_arrays_new_status, fs);
 }
 
 static char *escape_n_from_temp_key (const char *temp_key)
@@ -302,40 +351,36 @@ static char *escape_n_from_temp_key (const char *temp_key)
 
 static GtkWidget *get_child_by_name (GtkWidget *, const char *from);
 
-static void handshake_key_save (MainWindow *self)
-{
-  json_reader_read_member (self->reader, "from");
-  JsonNode *jfrom = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
-  json_reader_read_member (self->reader, "key");
-  JsonNode *jkey = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
-	const char *from = json_node_get_string (jfrom);
-	const char *temp_key = json_node_get_string (jkey);
-	char *key = escape_n_from_temp_key (temp_key);
+struct _handshake_key_save {
+	MainWindow *self;
+	char *from;
+	char *key;
+};
 
-	GtkWidget *child = get_child_by_name (self->list_users, from);
+static gboolean idle_handshake_key_save (gpointer user_data)
+{
+	struct _handshake_key_save *fs = (struct _handshake_key_save *) user_data;
+
+	GtkWidget *child = get_child_by_name (fs->self->list_users, fs->from);
 	if (child) {
 		g_object_set (child,
 			"blink_handshake", 0,
 			"handshaking", 0,
 			NULL);
-		GtkListBoxRow *row_sel_child = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->list_users));
+		GtkListBoxRow *row_sel_child = gtk_list_box_get_selected_row (GTK_LIST_BOX (fs->self->list_users));
 		GtkWidget *sel_child = gtk_list_box_row_get_child (row_sel_child);
 		if (child == sel_child) {
-			gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (self->handshake_button), 0);
+			gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (fs->self->handshake_button), 0);
 		}
 	}
 
 
 	char path[256];
-	snprintf (path, 256, "%s/%s/crypto.pem", root_app, from);
+	snprintf (path, 256, "%s/%s/crypto.pem", root_app, fs->from);
 	remove (path);
 	GFile *file = g_file_new_for_path (path);
 	if (!file) {
-		free (key);
-
-		return;
+		goto end;
 	}
 
 	GFileOutputStream *out = g_file_create (file,
@@ -343,13 +388,12 @@ static void handshake_key_save (MainWindow *self)
 			NULL,
 			NULL);
 	if (!out) {
-		free (key);
-		return;
+		goto end;
 	}
 
 	g_output_stream_write (G_OUTPUT_STREAM (out),
-			key,
-			strlen (key),
+			fs->key,
+			strlen (fs->key),
 			NULL,
 			NULL
 			);
@@ -357,45 +401,89 @@ static void handshake_key_save (MainWindow *self)
 	g_output_stream_close (G_OUTPUT_STREAM (out),
 			NULL,
 			NULL);
+end:
+	free (fs->key);
+	free (fs->from);
+	free (fs);
+
+	return G_SOURCE_REMOVE;
+}
+
+static void handshake_key_save (MainWindow *self)
+{
+	json_reader_read_member (self->reader, "from");
+	JsonNode *jfrom = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	json_reader_read_member (self->reader, "key");
+	JsonNode *jkey = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	const char *from = json_node_get_string (jfrom);
+	const char *temp_key = json_node_get_string (jkey);
+	char *key = escape_n_from_temp_key (temp_key);
+	struct _handshake_key_save *fs = calloc (1, sizeof (struct _handshake_key_save));
+	fs->from = strdup (from);
+	fs->key = strdup (key);
+	fs->self = self;
+	g_idle_add (idle_handshake_key_save, fs);
 
 	free (key);
 
 	return;
 }
+struct _handshake_answer_status {
+	MainWindow *self;
+	int status;
+	char *name;
+};
 
-static void handshake_answer_status (MainWindow *self)
+static gboolean idle_handshake_answer_status (gpointer user_data)
 {
-
-
-  json_reader_read_member (self->reader, "status_handshake");
-  JsonNode *jstatus = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
-  json_reader_read_member (self->reader, "to_name");
-  JsonNode *jto_name = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
-
-	int status = json_node_get_int (jstatus);
-	const char *name = json_node_get_string (jto_name);
+	struct _handshake_answer_status *fs = (struct _handshake_answer_status *) user_data;
 
 	for (int i = 0; 1; i++) {
 		GtkListBoxRow *row = gtk_list_box_get_row_at_index (
-				GTK_LIST_BOX (self->list_users),
+				GTK_LIST_BOX (fs->self->list_users),
 				i);
 		if (row == NULL) break;
 
 		GtkWidget *item = gtk_list_box_row_get_child (row);
 		const char *n = user_item_get_name (USER_ITEM (item));
-		if (!strncmp (n, name, strlen (name) + 1)) {
+		if (!strncmp (n, fs->name, strlen (fs->name) + 1)) {
 			g_object_set (item,
-					"handshaking", status,
+					"handshaking", fs->status,
 					NULL
 				     );
 
-			return;
+			goto end;
 		}
 	}
+end:
+	free (fs->name);
+	free (fs);
 
-	return;
+	return G_SOURCE_REMOVE;
+}
+
+static void handshake_answer_status (MainWindow *self)
+{
+	json_reader_read_member (self->reader, "status_handshake");
+	JsonNode *jstatus = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+	json_reader_read_member (self->reader, "to_name");
+	JsonNode *jto_name = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	int status = json_node_get_int (jstatus);
+	const char *name = json_node_get_string (jto_name);
+
+	struct _handshake_answer_status *fs = calloc (1, sizeof (struct _handshake_answer_status));
+	fs->status = status;
+	fs->name = strdup (name);
+	fs->self = self;
+	g_idle_add (idle_handshake_answer_status, fs);
+
 }
 
 #define FROM_TO_ME             0
@@ -477,66 +565,80 @@ static GtkWidget *get_child_by_name (GtkWidget *list_users, const char *from)
 	return NULL;
 }
 
-static void handshake_notice (MainWindow *self)
+struct _handshake_notice {
+	MainWindow *self;
+	char *from;
+	int status;
+};
+
+static gboolean idle_handshake_notice (gpointer user_data)
 {
+	struct _handshake_notice *fs = (struct _handshake_notice *) user_data;
 
-  json_reader_read_member (self->reader, "from");
-  JsonNode *jfrom = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
-  json_reader_read_member (self->reader, "status");
-  JsonNode *jstatus = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
-  const char *from = json_node_get_string (jfrom);
-  const int status = json_node_get_int (jstatus);
-
-	GtkWidget *child = get_child_by_name (self->list_users, from);
+	GtkWidget *child = get_child_by_name (fs->self->list_users, fs->from);
 	if (!child) {
 		return;
 	}
 
 	g_object_set (child,
-			"blink_handshake", status,
+			"blink_handshake", fs->status,
 			NULL);
 
-	return;
+	free (fs->from);
+	free (fs);
+
+	return G_SOURCE_REMOVE;
 }
 
-static void got_message (MainWindow *self)
+static void handshake_notice (MainWindow *self)
 {
 
-  json_reader_read_member (self->reader, "from");
-  JsonNode *jfrom = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
-  json_reader_read_member (self->reader, "data");
-  JsonNode *jdata = json_reader_get_value (self->reader);
-  json_reader_end_member (self->reader);
-
+	json_reader_read_member (self->reader, "from");
+	JsonNode *jfrom = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+	json_reader_read_member (self->reader, "status");
+	JsonNode *jstatus = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
 	const char *from = json_node_get_string (jfrom);
-	const char *data = json_node_get_string (jdata);
+	const int status = json_node_get_int (jstatus);
+
+	struct _handshake_notice *fs = calloc (1, sizeof (struct _handshake_notice));
+	fs->from = strdup (from);
+	fs->status = status;
+	fs->self = self;
+	g_idle_add (idle_handshake_notice, fs);
+}
+
+struct _got_message {
+	char *from;
+	char *data;
+	MainWindow *self;
+};
+
+static gboolean idle_got_message (gpointer user_data)
+{
+	struct _got_message *fs = (struct _got_message *) user_data;
 
 	size_t len;
-	unsigned char *dt = convert_data_to_hex (data, &len);
+	unsigned char *dt = convert_data_to_hex (fs->data, &len);
 
-	GtkWidget *child = get_child_by_name (self->list_users, from);
+	GtkWidget *child = get_child_by_name (fs->self->list_users, fs->from);
 	if (!child) {
-		free (dt);
-		return;
+		goto end;
 	}
-	GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->list_users));
+	GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (fs->self->list_users));
 	GtkWidget *row_child = NULL;
 	if (row)
 		row_child = gtk_list_box_row_get_child (row);
 
 	char path[256];
-	snprintf (path, 256, "%s/%s/key.pem", root_app, from);
+	snprintf (path, 256, "%s/%s/key.pem", root_app, fs->from);
 
 	int show_notification = 0;
 	if (child != row_child) {
 		show_notification = 1;
 	}
-	read_message_from (child, from, path, dt, self, len, show_notification);
-
-	free (dt);
+	read_message_from (child, fs->from, path, dt, fs->self, len, show_notification);
 
 	if (child != row_child) {
 		g_object_set (child,
@@ -545,9 +647,34 @@ static void got_message (MainWindow *self)
 
 	}
 
-	main_window_play_new_message (self);
+	main_window_play_new_message (fs->self);
 
-	return;
+end:
+	free (dt);
+	free (fs->from);
+	free (fs->data);
+	free (fs);
+
+	return G_SOURCE_REMOVE;
+}
+
+static void got_message (MainWindow *self)
+{
+
+	json_reader_read_member (self->reader, "from");
+	JsonNode *jfrom = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+	json_reader_read_member (self->reader, "data");
+	JsonNode *jdata = json_reader_get_value (self->reader);
+	json_reader_end_member (self->reader);
+
+	const char *from = json_node_get_string (jfrom);
+	const char *data = json_node_get_string (jdata);
+	struct _got_message *fs = calloc (1, sizeof (struct _got_message));
+	fs->from = strdup (from);
+	fs->data = strdup (data);
+	fs->self = self;
+	g_idle_add (idle_got_message, fs);
 }
 
 static char *_rsa_decrypt (const char *private_key, const char *p)
@@ -653,90 +780,85 @@ static void getting_file (MainWindow *self)
 
 }
 
-static void receive_handler_cb (GObject *source_object,
-                                GAsyncResult *res,
-                                gpointer user_data)
+static gpointer receive_handler_cb (gpointer user_data)
 {
 	MainWindow *self = MAIN_WINDOW (user_data);
+	while (1)
+	{
+		GError *error = NULL;
+		size_t readed = g_input_stream_read (self->igio, self->buf, TOTAL_SIZE, NULL, &error);
 
-	GError *error = NULL;
-  gssize readed = g_input_stream_read_finish (G_INPUT_STREAM (self->igio),
-                                              res,
-                                              &error);
-  if (error) {
-    g_print ("error result read: %s\n", error->message);
-    return;
-  }
-  self->buf[readed] = 0;
+  		if (error) {
+			g_print ("error result read: %s\n", error->message);
+			g_error_free (error);
+			continue;
+		}
+		self->buf[readed] = 0;
 
-  g_autoptr(JsonParser) parser = json_parser_new ();
-  if (!json_parser_load_from_data (parser, self->buf, -1, &error)) {
-    if (error) {
-      g_print ("load from data: %s\n", error->message);
-      g_error_free (error);
-      return;
-    }
-  }
+		JsonParser *parser = json_parser_new ();
+		if (!json_parser_load_from_data (parser, self->buf, -1, &error)) {
+			if (error) {
+				g_print ("load from data: %s\n", error->message);
+				g_error_free (error);
+				return;
+			}
+		}
 
 
 
-  g_autoptr(JsonReader) reader = json_reader_new (json_parser_get_root (parser));
-  json_reader_read_member (reader, "type");
-  JsonNode *jtype = json_reader_get_value (reader);
-  json_reader_end_member (reader);
-  const char *type = json_node_get_string (jtype);
+		JsonReader *reader = json_reader_new (json_parser_get_root (parser));
+		json_reader_read_member (reader, "type");
+		JsonNode *jtype = json_reader_get_value (reader);
+		json_reader_end_member (reader);
+		const char *type = json_node_get_string (jtype);
 
-  if (!strncmp (type, "storage_files", 14)) {
-	  self->reader = reader;
-	  fill_file_storage (self);
-	  goto end;
-  }
-  if (!strncmp (type, "getting_file", 13)) {
-	  self->reader = reader;
-	  getting_file (self);
-	  goto end;
-  }
+		if (!strncmp (type, "storage_files", 14)) {
+			self->reader = reader;
+			fill_file_storage (self);
+			goto end;
+		}
+		if (!strncmp (type, "getting_file", 13)) {
+			self->reader = reader;
+			getting_file (self);
+			goto end;
+		}
 
-	if (!strncmp (type, "all_users", 10)) {
-    self->reader = reader;
-		fill_arrays (self);
-    goto end;
-	}
-	if (!strncmp (type, "status_online", 14)) {
-    self->reader = reader;
-		fill_arrays_new_status (self);
-    goto end;
-	}
-	if (!strncmp (type, "handshake_answer", 17)) {
-	  self->reader = reader;
-	  handshake_answer_status (self);
-    goto end;
-	}
-	if (!strncmp (type, "handshake_key", 14)) {
-		self->reader = reader;
-		handshake_key_save (self);
-    goto end;
-	}
-	if (!strncmp (type, "message", 8)) {
-    self->reader = reader;
-		got_message (self);
-    goto end;
-	}
-	if (!strncmp (type, "handshake_notice", 17)) {
-    self->reader = reader;
-		handshake_notice (self);
-    goto end;
-	}
-
+		if (!strncmp (type, "all_users", 10)) {
+			self->reader = reader;
+			fill_arrays (self);
+			goto end;
+		}
+		if (!strncmp (type, "status_online", 14)) {
+			self->reader = reader;
+			fill_arrays_new_status (self);
+			goto end;
+		}
+		if (!strncmp (type, "handshake_answer", 17)) {
+			self->reader = reader;
+			handshake_answer_status (self);
+			goto end;
+		}
+		if (!strncmp (type, "handshake_key", 14)) {
+			self->reader = reader;
+			handshake_key_save (self);
+			goto end;
+		}
+		if (!strncmp (type, "message", 8)) {
+			self->reader = reader;
+			got_message (self);
+			goto end;
+		}
+		if (!strncmp (type, "handshake_notice", 17)) {
+			self->reader = reader;
+			handshake_notice (self);
+			goto end;
+		}
 end:
+		g_object_unref (parser);
+		g_object_unref (reader);
+	}
 
-  g_input_stream_read_async (self->igio,
-                                     self->buf,
-                                     TOTAL_SIZE,
-                                     G_PRIORITY_DEFAULT,
-                                     NULL,
-                                     receive_handler_cb,
-                                     self);
+	return NULL;
 }
 
 static JsonNode *build_json_get_list () {
@@ -835,14 +957,8 @@ static void main_window_set_property (GObject *object,
 			self->conn = g_value_get_object (value);
 			self->igio = g_io_stream_get_input_stream (G_IO_STREAM (self->conn));
 			self->ogio = g_io_stream_get_output_stream (G_IO_STREAM (self->conn));
-      g_input_stream_read_async (self->igio,
-                                     self->buf,
-                                     TOTAL_SIZE,
-                                     G_PRIORITY_DEFAULT,
-                                     NULL,
-                                     receive_handler_cb,
-                                     self);
-
+			if (self->thread_receive) g_thread_unref (self->thread_receive);
+			self->thread_receive = g_thread_new ("receive", receive_handler_cb, self);
 			break;
 		case PROP_NOTIFICATION:
 			self->notification = g_value_get_object (value);
@@ -1229,7 +1345,7 @@ static gpointer thread_get_file (gpointer user_data)
 		} else {
 			afp = fopen (file_path, "a");
 		}
-		unsigned char *b = malloc (size_buf + 1);
+		unsigned char *b = malloc (16 * 450 + 1);
 		int plaintext_len;
 		EVP_CIPHER_CTX *ctx;
 		int len;
@@ -1262,7 +1378,7 @@ end:
 		g_free (g);
 
 		struct xi *xi = calloc (1, sizeof (struct xi));
-		xi->progress = 1.0;//(double) (pos * 100) / (double) (size) / (double) (100.0);
+		xi->progress = (double) (pos * 100) / (double) (size_buf) / (double) (100.0);
 		xi->self = self;
 		xi->index = index;
 

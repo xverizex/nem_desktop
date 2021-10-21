@@ -105,8 +105,8 @@ static void file_storage_set_property (GObject *object,
 			break;
 		case PROP_PROGRESS:
 			self->fraction = g_value_get_double (value);
-			//gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (self->progress), self->fraction);
-			gtk_progress_bar_pulse (GTK_PROGRESS_BAR (self->progress));
+			gtk_progress_bar_set_fraction (GTK_PROGRESS_BAR (self->progress), self->fraction);
+			//gtk_progress_bar_pulse (GTK_PROGRESS_BAR (self->progress));
 			break;
 		case PROP_INDEX:
 			self->index = g_value_get_int (value);
